@@ -367,3 +367,9 @@ window.onload = () => {
     loadImages();
   }
 };
+
+document.getElementById('logoutButton').onclick = () => {
+  sessionStorage.removeItem('skySafeeUser');
+  sessionStorage.removeItem('skySafeeFolder');
+  location.reload(); // refresh to show login
+};
