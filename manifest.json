@@ -8,12 +8,12 @@
   "description": "A private, secure cloud gallery for your photos.",
   "icons": [
     {
-      "src": "icon-192.png",
+      "src": "icon-192lens.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "icon-512.png",
+      "src": "icon-512lens.png",
       "sizes": "512x512",
       "type": "image/png"
     }
