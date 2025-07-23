@@ -166,7 +166,7 @@ function addImageToDOM(url, index) {
   img.onclick = () => openLightbox(index);
 
   div.appendChild(img);
-  document.getElementById('gallery').prepend(div);
+  document.getElementById('gallery').appendChild(div);
 }
 
 function processAndUpload(file) {
