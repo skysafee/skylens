@@ -1,0 +1,76 @@
+:root {
+  --bg: #fff;
+  --fg: #333;
+  --card-bg: #f9f9f9;
+  --btn-bg: #4caf50;
+  --btn-hover: #45a047;
+  --drop-bg: rgba(33,150,243,0.08);
+  --drop-border: #2196f3;
+}
+body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--fg); }
+.hidden { display: none !important; }
+.centered-box {
+  position: fixed; inset: 0; background: black; color: white;
+  display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000;
+}
+.centered-box input, .centered-box button {
+  margin: 0.5rem; padding: 0.6rem; width: 220px; font-size: 1rem;
+  border-radius: 5px; border: none;
+}
+.centered-box button { background: var(--btn-bg); color: white; cursor: pointer; }
+.error { color: red; font-size: 0.9rem; height: 1.2rem; }
+#galleryContainer { padding: 1rem 2rem; }
+#dropZone {
+  border: 2px dashed var(--drop-border); background: var(--drop-bg);
+  padding: 2rem; border-radius: 10px; text-align: center; cursor: pointer; margin-bottom: 1rem; flex-grow: 1;
+}
+.skeleton {
+  border-radius: 10px;
+  background: linear-gradient(90deg, #eeeeee 25%, #dddddd 50%, #eeeeee 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite linear;
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 12px; }
+.gallery-item {
+  background: var(--card-bg); padding-bottom: 100%; position: relative;
+  border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+.gallery-item img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+.gallery-item > .skeleton { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+#actions { display: flex; gap: 10px; margin-bottom: 1rem; flex-wrap: wrap; }
+#actions button { background: var(--btn-bg); color: white; padding: 0.6rem 1.2rem; border: none; border-radius: 5px; cursor: pointer; font-size: 1rem; }
+#lightboxOverlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.9);
+  display: flex; align-items: center; justify-content: center; z-index: 2000; flex-direction: column;
+}
+#lightboxOverlay img { max-width: 90%; max-height: 80vh; border-radius: 10px; box-shadow: 0 0 20px rgba(255,255,255,0.2); }
+#lightboxOverlay.hidden { display: none; }
+#lightboxClose { position: absolute; top: 20px; right: 30px; font-size: 2rem; color: white; cursor: pointer; }
+#lightboxPrev, #lightboxNext {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  font-size: 2rem; background: rgba(255,255,255,0.2);
+  color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 5px;
+}
+#lightboxPrev { left: 30px; }
+#lightboxNext { right: 30px; }
+#lightboxDelete {
+    position: absolute; bottom: 20px;
+    font-size: 1.5rem; background: rgba(255, 82, 82, 0.7);
+    color: white; border: none; padding: 10px 15px;
+    cursor: pointer; border-radius: 50%;
+}
+#cameraModal {
+    position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;flex-direction:column;
+    padding: 1rem; box-sizing: border-box; overflow-y: auto;
+}
+#cameraModal video, #cameraModal #cropperContainer { max-width:90%; border:4px solid #fff; border-radius:10px; }
+#cameraModal #cropperContainer { max-height:70vh; overflow:auto; display:flex; flex-direction:column; align-items:center; }
+#cameraModal img { object-fit: contain; max-width:100%; max-height:60vh; border-radius:10px; margin-bottom:1rem; }
+#cameraButtons { margin-top:1rem; display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
+#cameraButtons button {
+    margin: 0 5px; padding: 0.6rem 1rem; font-size: 1rem;
+    background: var(--btn-bg); color: white; border: none;
+    border-radius: 5px; cursor: pointer;
+}

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SkySafee Cloud Gallery</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#4caf50"/>
+  <link rel="manifest" href="manifest.json">
+  <link href="https://unpkg.com/cropperjs@1.5.13/dist/cropper.min.css" rel="stylesheet" />
+  <script src="https://unpkg.com/cropperjs@1.5.13/dist/cropper.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- AUTH UI -->
+  <div class="centered-box" id="authBox">
+    <h2 id="authTitle">Login to SkySafee</h2>
+    <input type="text" id="authUser" placeholder="User ID" />
+    <input type="password" id="authPass" placeholder="Password" />
+    <input type="password" id="authConfirm" placeholder="Confirm Password" class="hidden" />
+    <button onclick="handleAuth()">Login</button>
+    <div class="error" id="authError"></div>
+    <p style="margin-top:1rem;"><a href="#" onclick="toggleMode(event)" style="color:#aaa;">Don't have an account? Sign up</a></p>
+  </div>
+
+  <!-- GALLERY UI -->
+  <div id="galleryContainer" class="hidden">
+    <h2>SkySafee Cloud Gallery</h2>
+    <div style="margin-bottom: 1rem;">
+      <label for="themeSelect">🎨 Theme: </label>
+      <select id="themeSelect" onchange="changeTheme(this.value)">
+        <option value="default">Default</option>
+        <option value="dark">Dark</option>
+        <option value="ocean">Ocean</option>
+        <option value="sunset">Sunset</option>
+      </select>
+    </div>
+
+    <div id="actions">
+      <div id="dropZone">
+        <p>📁 Drag & drop or click to upload images</p>
+        <input type="file" id="imageInput" accept="image/*" multiple hidden />
+      </div>
+      <button onclick="openCamera()">📷 Camera</button>
+    </div>
+
+    <div class="gallery" id="gallery"></div>
+  </div>
+
+  <!-- Lightbox Viewer -->
+  <div id="lightboxOverlay" class="hidden">
+    <span id="lightboxClose">×</span>
+    <img id="lightboxImage" src="" alt="Preview" />
+    <button id="lightboxPrev">‹</button>
+    <button id="lightboxNext">›</button>
+    <button id="lightboxDelete" title="Delete Image">🗑️</button>
+  </div>
+
+  <!-- Webcam Modal -->
+  <div id="cameraModal" class="hidden">
+    <video id="cameraVideo" autoplay playsinline></video>
+    <canvas id="cameraCanvas" class="hidden"></canvas>
+    <div id="cropperContainer">
+      <img id="cameraImage" class="hidden" />
+    </div>
+    <div id="cameraButtons">
+      <button onclick="switchCamera()">🔄 Switch</button>
+      <button onclick="cropAndUpload()" id="uploadButton" class="hidden">✅ Crop & Upload</button>
+      <button onclick="captureImage()">📸 Capture</button>
+      <button onclick="closeCamera()">❌ Cancel</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
