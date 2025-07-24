@@ -6,6 +6,7 @@ let CURRENT_PAGE = 1;
 const INITIAL_LOAD_COUNT = 4;
 const LOAD_MORE_COUNT = 20;
 let HAS_MORE_IMAGES = true;
+let TOTAL_IMAGES_LOADED = 0;
 // ==========================
 // ✨ PWA Service Worker
 // ==========================
@@ -157,13 +158,15 @@ async function loadImages(reset = false) {
 
 if (reset) {
   CURRENT_PAGE = 1;
+  TOTAL_IMAGES_LOADED = 0;
   IMAGE_URLS = [];
   document.getElementById('gallery').innerHTML = '';
   HAS_MORE_IMAGES = true;
 }
 
-let limit = CURRENT_PAGE === 1 ? INITIAL_LOAD_COUNT : LOAD_MORE_COUNT;
-let offset = (CURRENT_PAGE - 1) * LOAD_MORE_COUNT;
+
+let offset = reset ? 0 : TOTAL_IMAGES_LOADED;
+let limit = reset ? INITIAL_LOAD_COUNT : LOAD_MORE_COUNT;
 
 
   if (!HAS_MORE_IMAGES) return;
@@ -193,8 +196,7 @@ let offset = (CURRENT_PAGE - 1) * LOAD_MORE_COUNT;
         addImageToDOM(url, IMAGE_URLS.length - 1);
       }
     });
-
-    CURRENT_PAGE++;
+TOTAL_IMAGES_LOADED += response.urls.length;
 
     if (response.urls.length < limit) {
       HAS_MORE_IMAGES = false;
