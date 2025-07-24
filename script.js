@@ -75,7 +75,7 @@ function updateOnlineStatus() {
 
     if (CURRENT_USER && CURRENT_FOLDER) {
       loadTheme();
-      loadImages();
+      loadImages(true);
     }
   }
 }
@@ -152,6 +152,7 @@ async function handleAuth() {
 // 🖼️ IMAGE & GALLERY LOGIC
 // ==========================
 async function loadImages(reset = false) {
+  if (!CURRENT_FOLDER) return;
   if (reset) {
     CURRENT_PAGE = 1;
     IMAGE_URLS = [];
