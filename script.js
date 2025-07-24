@@ -3,7 +3,8 @@
 // ==========================
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzy3ZTT2YpSxJgGPHmPbqD1iR60zBzv_Vr52PR1s4cvWDvH6gW4P4_mOXpJocUhFHFjwQ/exec';
 let CURRENT_PAGE = 1;
-const IMAGES_PER_PAGE = 2;
+const INITIAL_LOAD_COUNT = 4;
+const LOAD_MORE_COUNT = 20;
 let HAS_MORE_IMAGES = true;
 // ==========================
 // ✨ PWA Service Worker
@@ -153,53 +154,61 @@ async function handleAuth() {
 // ==========================
 async function loadImages(reset = false) {
   if (!CURRENT_FOLDER) return;
+
+  let limit;
   if (reset) {
     CURRENT_PAGE = 1;
     IMAGE_URLS = [];
     document.getElementById('gallery').innerHTML = '';
     HAS_MORE_IMAGES = true;
+    limit = INITIAL_LOAD_COUNT;
+  } else {
+    limit = LOAD_MORE_COUNT;
   }
 
   if (!HAS_MORE_IMAGES) return;
 
-  // Add skeleton loaders
-  for (let i = 0; i < 0; i++) addSkeleton();
+  const btn = document.getElementById('loadMoreBtn');
+  const spinner = document.getElementById('loadingSpinner');
+  if (btn) btn.classList.add('hidden');
+  if (spinner) spinner.classList.remove('hidden');
 
-const response = await callAppsScript('getPaginatedImages', {
-  folderId: CURRENT_FOLDER,
-  offset: (CURRENT_PAGE - 1) * IMAGES_PER_PAGE,
-  limit: IMAGES_PER_PAGE
-});
+  const offset = reset ? 0 : INITIAL_LOAD_COUNT + (CURRENT_PAGE - 2) * LOAD_MORE_COUNT;
 
-
-  document.querySelectorAll('.gallery-item.skeleton').forEach(el => el.remove());
+  const response = await callAppsScript('getPaginatedImages', {
+    folderId: CURRENT_FOLDER,
+    offset,
+    limit
+  });
 
   if (response && response.success) {
     if (response.urls.length === 0) {
       HAS_MORE_IMAGES = false;
-      document.getElementById('loadMoreBtn').classList.add('hidden');
+      if (btn) btn.classList.add('hidden');
+      if (spinner) spinner.classList.add('hidden');
       return;
     }
 
-response.urls.forEach(url => {
-  if (!IMAGE_URLS.includes(url)) {
-    IMAGE_URLS.push(url);
-    addImageToDOM(url, IMAGE_URLS.length - 1);
-  }
-});
-
+    response.urls.forEach(url => {
+      if (!IMAGE_URLS.includes(url)) {
+        IMAGE_URLS.push(url);
+        addImageToDOM(url, IMAGE_URLS.length - 1);
+      }
+    });
 
     CURRENT_PAGE++;
 
-    if (response.urls.length < IMAGES_PER_PAGE) {
+    if (response.urls.length < limit) {
       HAS_MORE_IMAGES = false;
-      document.getElementById('loadMoreBtn').classList.add('hidden');
+      if (btn) btn.classList.add('hidden');
     } else {
-      document.getElementById('loadMoreBtn').classList.remove('hidden');
+      if (btn) btn.classList.remove('hidden');
     }
   } else {
     alert("Failed to load images: " + (response.message || "Unknown error"));
   }
+
+  if (spinner) spinner.classList.add('hidden');
 }
 function addSkeleton() {
     const div = document.createElement('div');
