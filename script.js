@@ -56,6 +56,26 @@ const THEMES = {
   ocean:   { bg: "#001f3f", fg: "#ffffff", card: "#003366", btn: "#00aced" },
   sunset:  { bg: "#2e1a47", fg: "#ffd1dc", card: "#5c2a9d", btn: "#ff5e5e" }
 };
+const offlineBanner = document.getElementById('offlineStatus');
+
+function updateOnlineStatus() {
+  if (!navigator.onLine) {
+    offlineBanner.textContent = "You're offline";
+    offlineBanner.classList.remove('hidden');
+  } else {
+    offlineBanner.textContent = "You're back online!";
+    offlineBanner.classList.remove('hidden');
+    setTimeout(() => {
+      offlineBanner.classList.add('hidden');
+    }, 3000);
+  }
+}
+
+window.addEventListener('online', updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+
+// Run on load
+updateOnlineStatus();
 
 function applyTheme(theme) {
   Object.keys(theme).forEach(key => document.documentElement.style.setProperty(`--${key}`, theme[key]));
