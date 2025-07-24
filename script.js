@@ -155,16 +155,16 @@ async function handleAuth() {
 async function loadImages(reset = false) {
   if (!CURRENT_FOLDER) return;
 
-  let limit;
-  if (reset) {
-    CURRENT_PAGE = 1;
-    IMAGE_URLS = [];
-    document.getElementById('gallery').innerHTML = '';
-    HAS_MORE_IMAGES = true;
-    limit = INITIAL_LOAD_COUNT;
-  } else {
-    limit = LOAD_MORE_COUNT;
-  }
+if (reset) {
+  CURRENT_PAGE = 1;
+  IMAGE_URLS = [];
+  document.getElementById('gallery').innerHTML = '';
+  HAS_MORE_IMAGES = true;
+}
+
+let limit = CURRENT_PAGE === 1 ? INITIAL_LOAD_COUNT : LOAD_MORE_COUNT;
+let offset = (CURRENT_PAGE - 1) * LOAD_MORE_COUNT;
+
 
   if (!HAS_MORE_IMAGES) return;
 
@@ -172,8 +172,6 @@ async function loadImages(reset = false) {
   const spinner = document.getElementById('loadingSpinner');
   if (btn) btn.classList.add('hidden');
   if (spinner) spinner.classList.remove('hidden');
-
-  const offset = reset ? 0 : INITIAL_LOAD_COUNT + (CURRENT_PAGE - 2) * LOAD_MORE_COUNT;
 
   const response = await callAppsScript('getPaginatedImages', {
     folderId: CURRENT_FOLDER,
