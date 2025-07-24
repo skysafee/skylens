@@ -163,7 +163,7 @@ async function loadImages(reset = false) {
   if (!HAS_MORE_IMAGES) return;
 
   // Add skeleton loaders
-  for (let i = 0; i < 8; i++) addSkeleton();
+  for (let i = 0; i < 1; i++) addSkeleton();
 
 const response = await callAppsScript('getPaginatedImages', {
   folderId: CURRENT_FOLDER,
@@ -181,8 +181,13 @@ const response = await callAppsScript('getPaginatedImages', {
       return;
     }
 
-    IMAGE_URLS.push(...response.urls);
-    response.urls.forEach((url, index) => addImageToDOM(url, IMAGE_URLS.length - response.urls.length + index));
+response.urls.forEach(url => {
+  if (!IMAGE_URLS.includes(url)) {
+    IMAGE_URLS.push(url);
+    addImageToDOM(url, IMAGE_URLS.length - 1);
+  }
+});
+
 
     CURRENT_PAGE++;
 
