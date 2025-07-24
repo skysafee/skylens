@@ -3,7 +3,7 @@
 // ==========================
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzy3ZTT2YpSxJgGPHmPbqD1iR60zBzv_Vr52PR1s4cvWDvH6gW4P4_mOXpJocUhFHFjwQ/exec';
 let CURRENT_PAGE = 1;
-const IMAGES_PER_PAGE = 1;
+const IMAGES_PER_PAGE = 2;
 let HAS_MORE_IMAGES = true;
 // ==========================
 // ✨ PWA Service Worker
