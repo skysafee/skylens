@@ -2,7 +2,9 @@
 // 🔧 CONFIGURATION
 // ==========================
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzy3ZTT2YpSxJgGPHmPbqD1iR60zBzv_Vr52PR1s4cvWDvH6gW4P4_mOXpJocUhFHFjwQ/exec';
-
+let CURRENT_PAGE = 1;
+const IMAGES_PER_PAGE = 20;
+let HAS_MORE_IMAGES = true;
 // ==========================
 // ✨ PWA Service Worker
 // ==========================
@@ -149,22 +151,49 @@ async function handleAuth() {
 // ==========================
 // 🖼️ IMAGE & GALLERY LOGIC
 // ==========================
-async function loadImages() {
-  IMAGE_URLS = [];
-  document.getElementById('gallery').innerHTML = ''; // Clear existing
-  // Add 8 skeleton loaders for perceived performance
-  for(let i=0; i<8; i++) addSkeleton();
+async function loadImages(reset = false) {
+  if (reset) {
+    CURRENT_PAGE = 1;
+    IMAGE_URLS = [];
+    document.getElementById('gallery').innerHTML = '';
+    HAS_MORE_IMAGES = true;
+  }
 
-  const response = await callAppsScript('getUploadedImages', { folderId: CURRENT_FOLDER });
+  if (!HAS_MORE_IMAGES) return;
 
-  document.querySelectorAll('.gallery-item.skeleton').forEach(el => el.remove()); // Remove all skeletons
+  // Add skeleton loaders
+  for (let i = 0; i < 8; i++) addSkeleton();
+
+  const response = await callAppsScript('getPaginatedImages', {
+    folderId: CURRENT_FOLDER,
+    page: CURRENT_PAGE,
+    limit: IMAGES_PER_PAGE
+  });
+
+  document.querySelectorAll('.gallery-item.skeleton').forEach(el => el.remove());
 
   if (response && response.success) {
-    IMAGE_URLS = response.urls.reverse(); // Show newest first
-    IMAGE_URLS.forEach((url, index) => addImageToDOM(url, index));
+    if (response.urls.length === 0) {
+      HAS_MORE_IMAGES = false;
+      document.getElementById('loadMoreBtn').classList.add('hidden');
+      return;
+    }
+
+    IMAGE_URLS.push(...response.urls);
+    response.urls.forEach((url, index) => addImageToDOM(url, IMAGE_URLS.length - response.urls.length + index));
+
+    CURRENT_PAGE++;
+
+    if (response.urls.length < IMAGES_PER_PAGE) {
+      HAS_MORE_IMAGES = false;
+      document.getElementById('loadMoreBtn').classList.add('hidden');
+    } else {
+      document.getElementById('loadMoreBtn').classList.remove('hidden');
+    }
+  } else {
+    alert("Failed to load images: " + (response.message || "Unknown error"));
   }
 }
-
 function addSkeleton() {
     const div = document.createElement('div');
     div.className = 'gallery-item skeleton';
@@ -392,7 +421,7 @@ window.onload = () => {
     document.getElementById('authBox').classList.add('hidden');
     document.getElementById('galleryContainer').classList.remove('hidden');
     loadTheme();
-    loadImages();
+    loadImages(true);  // Pass reset = true
   }
 };
 
@@ -403,4 +432,6 @@ document.getElementById('logoutButton').onclick = () => {
   localStorage.removeItem('skySafeeFolder');
   location.reload();
 };
-
+document.getElementById('loadMoreBtn').onclick = () => {
+  loadImages();
+};
