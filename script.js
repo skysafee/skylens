@@ -59,6 +59,8 @@ const THEMES = {
 const offlineBanner = document.getElementById('offlineStatus');
 
 function updateOnlineStatus() {
+  if (!offlineBanner) return;
+
   if (!navigator.onLine) {
     offlineBanner.textContent = "You're offline";
     offlineBanner.classList.remove('hidden');
@@ -68,14 +70,20 @@ function updateOnlineStatus() {
     setTimeout(() => {
       offlineBanner.classList.add('hidden');
     }, 3000);
+
+    if (CURRENT_USER && CURRENT_FOLDER) {
+      loadTheme();
+      loadImages();
+    }
   }
 }
 
 window.addEventListener('online', updateOnlineStatus);
 window.addEventListener('offline', updateOnlineStatus);
 
-// Run on load
+// Initial check on load
 updateOnlineStatus();
+
 
 function applyTheme(theme) {
   Object.keys(theme).forEach(key => document.documentElement.style.setProperty(`--${key}`, theme[key]));
