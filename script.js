@@ -38,8 +38,8 @@ async function callAppsScript(action, params = {}) {
 // ==========================
 // 🌍 GLOBAL STATE
 // ==========================
-let CURRENT_USER = sessionStorage.getItem('skySafeeUser');
-let CURRENT_FOLDER = sessionStorage.getItem('skySafeeFolder');
+let CURRENT_USER = localStorage.getItem('skySafeeUser');
+let CURRENT_FOLDER = localStorage.getItem('skySafeeFolder');
 let IMAGE_URLS = [];
 let CURRENT_INDEX = -1;
 let videoStream = null;
@@ -107,8 +107,8 @@ async function handleAuth() {
   if (response && response.success) {
     CURRENT_USER = uid;
     CURRENT_FOLDER = response.folderId;
-    sessionStorage.setItem('skySafeeUser', CURRENT_USER);
-    sessionStorage.setItem('skySafeeFolder', CURRENT_FOLDER);
+    localStorage.setItem('skySafeeUser', CURRENT_USER);
+    localStorage.setItem('skySafeeFolder', CURRENT_FOLDER);
     document.getElementById('authBox').classList.add('hidden');
     document.getElementById('galleryContainer').classList.remove('hidden');
     loadTheme();
@@ -371,5 +371,8 @@ window.onload = () => {
 document.getElementById('logoutButton').onclick = () => {
   sessionStorage.removeItem('skySafeeUser');
   sessionStorage.removeItem('skySafeeFolder');
-  location.reload(); // refresh to show login
+  localStorage.removeItem('skySafeeUser');
+  localStorage.removeItem('skySafeeFolder');
+  location.reload();
 };
+
