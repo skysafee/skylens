@@ -165,11 +165,12 @@ async function loadImages(reset = false) {
   // Add skeleton loaders
   for (let i = 0; i < 8; i++) addSkeleton();
 
-  const response = await callAppsScript('getPaginatedImages', {
-    folderId: CURRENT_FOLDER,
-    page: CURRENT_PAGE,
-    limit: IMAGES_PER_PAGE
-  });
+const response = await callAppsScript('getPaginatedImages', {
+  folderId: CURRENT_FOLDER,
+  offset: (CURRENT_PAGE - 1) * IMAGES_PER_PAGE,
+  limit: IMAGES_PER_PAGE
+});
+
 
   document.querySelectorAll('.gallery-item.skeleton').forEach(el => el.remove());
 
