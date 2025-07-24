@@ -1,4 +1,4 @@
-const CACHE_NAME = 'skysafe-v1';
+const CACHE_NAME = 'skylens';
 const URLS_TO_CACHE = [
   '/',
   'index.html',
@@ -9,27 +9,21 @@ const URLS_TO_CACHE = [
   'https://unpkg.com/cropperjs@1.5.13/dist/cropper.min.css'
 ];
 
-// Install the service worker and cache the app shell
 self.addEventListener('install', event => {
+  self.skipWaiting(); // 🔥 Force activate new SW immediately
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Opened cache');
-        return cache.addAll(URLS_TO_CACHE);
-      })
+      .then(cache => cache.addAll(URLS_TO_CACHE))
   );
 });
 
-// Serve cached content when offline
+self.addEventListener('activate', event => {
+  clients.claim(); // 🔥 Take control of all clients immediately
+});
+
 self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request)
-      .then(response => {
-        // Cache hit - return response
-        if (response) {
-          return response;
-        }
-        return fetch(event.request);
-      })
+      .then(response => response || fetch(event.request))
   );
 });
