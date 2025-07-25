@@ -71,10 +71,6 @@ function updateOnlineStatus() {
     banner.textContent = "You're back online!";
     banner.classList.remove('hidden');
     setTimeout(() => banner.classList.add('hidden'), 3000);
-    if (CURRENT_USER && CURRENT_FOLDER) {
-      loadTheme();
-      loadImages(true);
-    }
   }
 }
 window.addEventListener('online', updateOnlineStatus);
@@ -152,19 +148,18 @@ async function loadImages(reset = false) {
   const spinner = document.getElementById('loadingSpinner');
 
 if (reset) {
-  CURRENT_PAGE = 1;
-  TOTAL_IMAGES_LOADED = 0;
+  // Reset pagination state
   IMAGE_URLS = [];
+  NEXT_START_INDEX = 0;     // ← **NEW**: reset start index!
   HAS_MORE_IMAGES = true;
 
-  // Clear gallery DOM
+  // Fully clear the gallery DOM
   const gallery = document.getElementById('gallery');
-  if (gallery) {
-    while (gallery.firstChild) {
-      gallery.removeChild(gallery.firstChild);
-    }
+  while (gallery.firstChild) {
+    gallery.removeChild(gallery.firstChild);
   }
 }
+
 
   if (!HAS_MORE_IMAGES) return;
 
