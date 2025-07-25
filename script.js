@@ -2,42 +2,10 @@
 // 🔧 CONFIGURATION
 // ==========================
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzy3ZTT2YpSxJgGPHmPbqD1iR60zBzv_Vr52PR1s4cvWDvH6gW4P4_mOXpJocUhFHFjwQ/exec';
-let CURRENT_PAGE = 1;
 const INITIAL_LOAD_COUNT = 4;
 const LOAD_MORE_COUNT = 20;
 let HAS_MORE_IMAGES = true;
-let TOTAL_IMAGES_LOADED = 0;
-// ==========================
-// ✨ PWA Service Worker
-// ==========================
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('service-worker.js')
-      .then(registration => console.log('ServiceWorker registration successful'))
-      .catch(err => console.log('ServiceWorker registration failed: ', err));
-  });
-}
-
-// ==========================
-// 📞 API HELPER
-// ==========================
-async function callAppsScript(action, params = {}) {
-  try {
-    const res = await fetch(SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Use text/plain for GAS
-      body: JSON.stringify({ action, params }),
-      redirect: 'follow'
-    });
-    if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-    }
-    return await res.json();
-  } catch (error) {
-    console.error('Error calling Apps Script:', error);
-    return { success: false, message: `Network or script error: ${error.message}` };
-  }
-}
+let NEXT_START_INDEX = 0;
 
 // ==========================
 // 🌍 GLOBAL STATE
@@ -52,6 +20,36 @@ let cameraDevices = [];
 let currentCameraIndex = 0;
 
 // ==========================
+// ✨ PWA Service Worker
+// ==========================
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js')
+      .then(() => console.log('ServiceWorker registered'))
+      .catch(err => console.error('ServiceWorker registration failed:', err));
+  });
+}
+
+// ==========================
+// 📞 API HELPER
+// ==========================
+async function callAppsScript(action, params = {}) {
+  try {
+    const res = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action, params }),
+      redirect: 'follow'
+    });
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    return await res.json();
+  } catch (error) {
+    console.error('API Error:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+// ==========================
 // 🎨 THEME LOGIC
 // ==========================
 const THEMES = {
@@ -60,61 +58,56 @@ const THEMES = {
   ocean:   { bg: "#001f3f", fg: "#ffffff", card: "#003366", btn: "#00aced" },
   sunset:  { bg: "#2e1a47", fg: "#ffd1dc", card: "#5c2a9d", btn: "#ff5e5e" }
 };
-const offlineBanner = document.getElementById('offlineStatus');
 
 function updateOnlineStatus() {
-  if (!offlineBanner) return;
+  const banner = document.getElementById('offlineStatus');
+  if (!banner) return;
 
   if (!navigator.onLine) {
-    offlineBanner.textContent = "You're offline";
-    offlineBanner.classList.remove('hidden');
+    banner.textContent = "You're offline";
+    banner.classList.remove('hidden');
   } else {
-    offlineBanner.textContent = "You're back online!";
-    offlineBanner.classList.remove('hidden');
-    setTimeout(() => {
-      offlineBanner.classList.add('hidden');
-    }, 3000);
-
+    banner.textContent = "You're back online!";
+    banner.classList.remove('hidden');
+    setTimeout(() => banner.classList.add('hidden'), 3000);
     if (CURRENT_USER && CURRENT_FOLDER) {
       loadTheme();
       loadImages(true);
     }
   }
 }
-
 window.addEventListener('online', updateOnlineStatus);
 window.addEventListener('offline', updateOnlineStatus);
-
-// Initial check on load
 updateOnlineStatus();
 
-
 function applyTheme(theme) {
-  Object.keys(theme).forEach(key => document.documentElement.style.setProperty(`--${key}`, theme[key]));
+  Object.entries(theme).forEach(([k, v]) => {
+    document.documentElement.style.setProperty(`--${k}`, v);
+  });
 }
 
 async function loadTheme() {
-  const response = await callAppsScript('getTheme', { userId: CURRENT_USER });
-  const themeName = (response.success && response.theme) ? response.theme : 'default';
+  const res = await callAppsScript('getTheme', { userId: CURRENT_USER });
+  const themeName = res.success ? res.theme : 'default';
   applyTheme(THEMES[themeName] || THEMES.default);
   document.getElementById('themeSelect').value = themeName;
 }
 
 async function changeTheme(themeName) {
-  applyTheme(THEMES[themeName] || THEMES.default);
+  applyTheme(THEMES[themeName]);
   await callAppsScript('saveTheme', { userId: CURRENT_USER, themeName });
 }
-
 
 // ==========================
 // 🔐 AUTH LOGIC
 // ==========================
 function toggleMode(e) {
   e.preventDefault();
-  const mode = document.getElementById('authTitle').textContent.includes('Login') ? 'signup' : 'login';
-  document.getElementById('authTitle').textContent = mode === 'signup' ? 'Create an Account' : 'Login to SkySafee';
-  document.querySelector('#authBox button').textContent = mode === 'signup' ? 'Sign Up' : 'Login';
-  document.getElementById('authConfirm').classList.toggle('hidden', mode !== 'signup');
+  const title = document.getElementById('authTitle');
+  const isLogin = title.textContent.includes('Login');
+  title.textContent = isLogin ? 'Create an Account' : 'Login to SkySafee';
+  document.querySelector('#authBox button').textContent = isLogin ? 'Sign Up' : 'Login';
+  document.getElementById('authConfirm').classList.toggle('hidden', isLogin);
   document.getElementById('authError').textContent = '';
 }
 
@@ -127,31 +120,28 @@ async function handleAuth() {
   const pwd = document.getElementById('authPass').value;
   const isSignup = document.getElementById('authTitle').textContent.includes('Create');
 
-  if (isSignup) {
-    const conf = document.getElementById('authConfirm').value;
-    if (pwd !== conf) return showError('Passwords must match.');
-  }
-  if (!uid || !pwd) return showError('Please fill in all fields.');
+  if (!uid || !pwd) return showError("Fill all fields.");
+  if (isSignup && pwd !== document.getElementById('authConfirm').value) return showError("Passwords don't match.");
 
   const action = isSignup ? 'createUser' : 'verifyLogin';
-  const response = await callAppsScript(action, { userId: uid, password: pwd });
+  const res = await callAppsScript(action, { userId: uid, password: pwd });
 
-  if (response && response.success) {
+  if (res.success) {
     CURRENT_USER = uid;
-    CURRENT_FOLDER = response.folderId;
-    localStorage.setItem('skySafeeUser', CURRENT_USER);
-    localStorage.setItem('skySafeeFolder', CURRENT_FOLDER);
+    CURRENT_FOLDER = res.folderId;
+    localStorage.setItem('skySafeeUser', uid);
+    localStorage.setItem('skySafeeFolder', res.folderId);
     document.getElementById('authBox').classList.add('hidden');
     document.getElementById('galleryContainer').classList.remove('hidden');
     loadTheme();
-    loadImages();
+    loadImages(true);
   } else {
-    showError(response.message || 'An unknown error occurred.');
+    showError(res.message || 'Error');
   }
 }
 
 // ==========================
-// 🖼️ IMAGE & GALLERY LOGIC
+// 🖼️ GALLERY & PAGINATION
 // ==========================
 async function loadImages(reset = false) {
   if (!CURRENT_FOLDER) return;
@@ -160,71 +150,37 @@ async function loadImages(reset = false) {
   const spinner = document.getElementById('loadingSpinner');
 
   if (reset) {
-    CURRENT_PAGE = 1;
-    TOTAL_IMAGES_LOADED = 0;
     IMAGE_URLS = [];
-    document.getElementById('gallery').innerHTML = '';
+    NEXT_START_INDEX = 0;
     HAS_MORE_IMAGES = true;
+    document.getElementById('gallery').innerHTML = '';
   }
 
   if (!HAS_MORE_IMAGES) return;
 
-  const offset = TOTAL_IMAGES_LOADED;
-  const limit = reset ? INITIAL_LOAD_COUNT : LOAD_MORE_COUNT;
-
-  console.log("📦 Fetching images | Offset:", offset, "Limit:", limit);
-
   if (btn) btn.classList.add('hidden');
   if (spinner) spinner.classList.remove('hidden');
 
-  const response = await callAppsScript('getPaginatedImages', {
+  const res = await callAppsScript('getPaginatedImages', {
     folderId: CURRENT_FOLDER,
-    offset,
-    limit
+    startIndex: NEXT_START_INDEX,
+    limit: reset ? INITIAL_LOAD_COUNT : LOAD_MORE_COUNT
   });
 
-  if (response && response.success) {
-    const fetchedUrls = response.urls || [];
-
-    if (fetchedUrls.length === 0) {
-      HAS_MORE_IMAGES = false;
-      if (btn) btn.classList.add('hidden');
-      if (spinner) spinner.classList.add('hidden');
-      return;
-    }
-
-    fetchedUrls.forEach(url => {
-      if (!IMAGE_URLS.includes(url)) {
-        IMAGE_URLS.push(url);
-        addImageToDOM(url, IMAGE_URLS.length - 1);
-      }
+  if (res.success) {
+    const batch = res.urls || [];
+    batch.forEach(url => {
+      IMAGE_URLS.push(url);
+      addImageToDOM(url, IMAGE_URLS.length - 1);
     });
-
-    TOTAL_IMAGES_LOADED += fetchedUrls.length;
-
-    // If less than requested, likely no more to load
-    if (fetchedUrls.length < limit) {
-      HAS_MORE_IMAGES = false;
-      if (btn) btn.classList.add('hidden');
-    } else {
-      HAS_MORE_IMAGES = true;
-      if (btn) btn.classList.remove('hidden');
-    }
-
+    NEXT_START_INDEX = res.nextStart || IMAGE_URLS.length;
+    HAS_MORE_IMAGES = res.hasMore;
   } else {
-    alert("Failed to load images: " + (response.message || "Unknown error"));
+    alert("Failed to load images: " + res.message);
   }
 
   if (spinner) spinner.classList.add('hidden');
-}
-
-function addSkeleton() {
-    const div = document.createElement('div');
-    div.className = 'gallery-item skeleton';
-    const skeleton = document.createElement('div');
-    skeleton.className = 'skeleton';
-    div.appendChild(skeleton);
-    document.getElementById('gallery').appendChild(div);
+  if (btn) btn.classList.toggle('hidden', !HAS_MORE_IMAGES);
 }
 
 function addImageToDOM(url, index) {
@@ -251,48 +207,47 @@ function addImageToDOM(url, index) {
 }
 
 function processAndUpload(file) {
-    if (!file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    
-    // Add a skeleton loader immediately for better UX
-    const tempDiv = document.createElement('div');
-    tempDiv.className = 'gallery-item';
-    const skeleton = document.createElement('div');
-    skeleton.className = 'skeleton';
-    tempDiv.appendChild(skeleton);
-    document.getElementById('gallery').prepend(tempDiv);
+  if (!file.type.startsWith('image/')) return;
 
-    reader.onload = async () => {
-      const dataUrl = reader.result;
-      const response = await callAppsScript('uploadToDrive', {
-        dataUrl,
-        filename: file.name,
-        folderId: CURRENT_FOLDER
-      });
-      if (response && response.success) {
-        // Replace skeleton with the actual image
-        tempDiv.remove();
-        IMAGE_URLS.unshift(response.url); // Add to start of array
-        // Re-render all images to fix indices
-        document.getElementById('gallery').innerHTML = '';
-        IMAGE_URLS.forEach((u, i) => addImageToDOM(u, i));
-      } else {
-        tempDiv.remove();
-        alert('Upload failed: ' + response.message);
-      }
-    };
-    reader.readAsDataURL(file);
+  const reader = new FileReader();
+  const tempDiv = document.createElement('div');
+  tempDiv.className = 'gallery-item';
+  const skeleton = document.createElement('div');
+  skeleton.className = 'skeleton';
+  tempDiv.appendChild(skeleton);
+  document.getElementById('gallery').prepend(tempDiv);
+
+  reader.onload = async () => {
+    const dataUrl = reader.result;
+    const res = await callAppsScript('uploadToDrive', {
+      dataUrl,
+      filename: file.name,
+      folderId: CURRENT_FOLDER
+    });
+    tempDiv.remove();
+    if (res.success) {
+      IMAGE_URLS.unshift(res.url);
+      document.getElementById('gallery').innerHTML = '';
+      IMAGE_URLS.forEach((u, i) => addImageToDOM(u, i));
+    } else {
+      alert('Upload failed: ' + res.message);
+    }
+  };
+  reader.readAsDataURL(file);
 }
 
-// Event listeners for uploads
-document.getElementById('imageInput').onchange = e => {
-    [...e.target.files].forEach(processAndUpload);
-};
+document.getElementById('imageInput').onchange = e => [...e.target.files].forEach(processAndUpload);
 
 const dropZone = document.getElementById('dropZone');
 dropZone.addEventListener('click', () => document.getElementById('imageInput').click());
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.background = "rgba(33,150,243,0.2)"; });
-dropZone.addEventListener('dragleave', e => { e.preventDefault(); dropZone.style.background = "var(--drop-bg)"; });
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.style.background = "rgba(33,150,243,0.2)";
+});
+dropZone.addEventListener('dragleave', e => {
+  e.preventDefault();
+  dropZone.style.background = "var(--drop-bg)";
+});
 dropZone.addEventListener('drop', e => {
   e.preventDefault();
   dropZone.style.background = "var(--drop-bg)";
@@ -300,7 +255,7 @@ dropZone.addEventListener('drop', e => {
 });
 
 // ==========================
-// 💡 LIGHTBOX LOGIC
+// 💡 LIGHTBOX
 // ==========================
 function openLightbox(index) {
   CURRENT_INDEX = index;
@@ -323,22 +278,22 @@ function showPrev() {
 }
 
 async function deleteCurrentImage() {
-    const urlToDelete = IMAGE_URLS[CURRENT_INDEX];
-    if (!urlToDelete || !confirm('Are you sure you want to delete this image permanently?')) return;
+  const url = IMAGE_URLS[CURRENT_INDEX];
+  if (!url || !confirm('Delete this image permanently?')) return;
 
-    const response = await callAppsScript('deleteImage', { folderId: CURRENT_FOLDER, imageUrl: urlToDelete });
-    if (response && response.success) {
-        // Remove from UI
-        document.querySelector(`.gallery-item[data-url="${urlToDelete}"]`).remove();
-        const nextIndex = CURRENT_INDEX;
-        closeLightbox();
-        // Reload images to get correct state from server
-        loadImages();
-    } else {
-        alert('Deletion failed: ' + response.message);
-    }
+  const res = await callAppsScript('deleteImage', {
+    folderId: CURRENT_FOLDER,
+    imageUrl: url
+  });
+
+  if (res.success) {
+    document.querySelector(`.gallery-item[data-url="${url}"]`)?.remove();
+    IMAGE_URLS.splice(CURRENT_INDEX, 1);
+    closeLightbox();
+  } else {
+    alert("Delete failed: " + res.message);
+  }
 }
-
 
 document.getElementById('lightboxClose').onclick = closeLightbox;
 document.getElementById('lightboxNext').onclick = showNext;
@@ -347,20 +302,19 @@ document.getElementById('lightboxDelete').onclick = deleteCurrentImage;
 document.addEventListener('keydown', e => {
   if (document.getElementById('lightboxOverlay').classList.contains('hidden')) return;
   if (e.key === 'Escape') closeLightbox();
-  else if (e.key === 'ArrowRight') showNext();
-  else if (e.key === 'ArrowLeft') showPrev();
+  if (e.key === 'ArrowRight') showNext();
+  if (e.key === 'ArrowLeft') showPrev();
 });
 
-
 // ==========================
-// 📷 CAMERA LOGIC
+// 📷 CAMERA
 // ==========================
 async function openCamera() {
   document.getElementById('cameraModal').classList.remove('hidden');
   try {
     cameraDevices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
-    if (!cameraDevices.length) throw new Error("No camera found.");
-    currentCameraIndex = 0; // default to the first camera
+    if (!cameraDevices.length) throw new Error("No camera found");
+    currentCameraIndex = 0;
     startCamera(cameraDevices[0].deviceId);
   } catch (err) {
     alert("Camera error: " + err.message);
@@ -371,26 +325,17 @@ async function openCamera() {
 function startCamera(deviceId) {
   if (videoStream) videoStream.getTracks().forEach(track => track.stop());
 
-  const constraints = {
-    video: {
-      deviceId: deviceId ? { exact: deviceId } : undefined,
-      facingMode: 'environment' // Prefer rear camera
-    }
-  };
-
-  navigator.mediaDevices.getUserMedia(constraints)
-    .then(stream => {
+  navigator.mediaDevices.getUserMedia({
+    video: { deviceId: deviceId ? { exact: deviceId } : undefined, facingMode: 'environment' }
+  }).then(stream => {
+    videoStream = stream;
+    document.getElementById('cameraVideo').srcObject = stream;
+  }).catch(() => {
+    navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
       videoStream = stream;
       document.getElementById('cameraVideo').srcObject = stream;
-    })
-    .catch(err => {
-      console.error("Camera start error:", err);
-      // Fallback for devices that don't like exact deviceId
-      navigator.mediaDevices.getUserMedia({video:true}).then(stream => {
-         videoStream = stream;
-         document.getElementById('cameraVideo').srcObject = stream;
-      }).catch(e => alert("Could not access camera."));
-    });
+    }).catch(() => alert("Camera access denied"));
+  });
 }
 
 function switchCamera() {
@@ -406,9 +351,8 @@ function captureImage() {
 
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  canvas.getContext('2d').drawImage(video, 0, 0);
   image.src = canvas.toDataURL('image/png');
-
   image.classList.remove('hidden');
   document.getElementById('cropperContainer').classList.remove('hidden');
   video.classList.add('hidden');
@@ -428,34 +372,31 @@ function cropAndUpload() {
 
 function closeCamera() {
   if (videoStream) videoStream.getTracks().forEach(track => track.stop());
-  if (cropper) { cropper.destroy(); cropper = null; }
-
-  document.getElementById('cameraModal').classList.add('hidden');
-  document.getElementById('cameraVideo').classList.remove('hidden');
-  document.getElementById('cameraImage').classList.add('hidden');
-  document.getElementById('uploadButton').classList.add('hidden');
+  if (cropper) cropper.destroy();
+  cropper = null;
   videoStream = null;
+  document.getElementById('cameraModal').classList.add('hidden');
+  document.getElementById('cameraImage').classList.add('hidden');
+  document.getElementById('cameraVideo').classList.remove('hidden');
+  document.getElementById('uploadButton').classList.add('hidden');
 }
 
 // ==========================
-// 🚀 APP INITIALIZATION
+// 🚀 INIT
 // ==========================
 window.onload = () => {
   if (CURRENT_USER && CURRENT_FOLDER) {
     document.getElementById('authBox').classList.add('hidden');
     document.getElementById('galleryContainer').classList.remove('hidden');
     loadTheme();
-    loadImages(true);  // Pass reset = true
+    loadImages(true);
   }
 };
 
 document.getElementById('logoutButton').onclick = () => {
-  sessionStorage.removeItem('skySafeeUser');
-  sessionStorage.removeItem('skySafeeFolder');
-  localStorage.removeItem('skySafeeUser');
-  localStorage.removeItem('skySafeeFolder');
+  localStorage.clear();
+  sessionStorage.clear();
   location.reload();
 };
-document.getElementById('loadMoreBtn').onclick = () => {
-  loadImages();
-};
+
+document.getElementById('loadMoreBtn').onclick = () => loadImages();
