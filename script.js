@@ -6,6 +6,7 @@ const INITIAL_LOAD_COUNT = 4;
 const LOAD_MORE_COUNT = 20;
 let HAS_MORE_IMAGES = true;
 let NEXT_START_INDEX = 0;
+let isSignupMode = false;
 
 // ==========================
 // 🌍 GLOBAL STATE
@@ -103,13 +104,14 @@ async function changeTheme(themeName) {
 // ==========================
 function toggleMode(e) {
   e.preventDefault();
-  const title = document.getElementById('authTitle');
-  const isLogin = title.textContent.includes('Login');
-  title.textContent = isLogin ? 'Create an Account' : 'Login to SkySafee';
-  document.querySelector('#authBox button').textContent = isLogin ? 'Sign Up' : 'Login';
-  document.getElementById('authConfirm').classList.toggle('hidden', isLogin);
+  isSignupMode = !isSignupMode;
+
+  document.getElementById('authTitle').textContent = isSignupMode ? 'Create an Account' : 'Login to SkySafee';
+  document.querySelector('#authBox button').textContent = isSignupMode ? 'Sign Up' : 'Login';
+  document.getElementById('authConfirm').classList.toggle('hidden', !isSignupMode);
   document.getElementById('authError').textContent = '';
 }
+
 
 function showError(msg) {
   document.getElementById('authError').textContent = msg;
@@ -118,7 +120,7 @@ function showError(msg) {
 async function handleAuth() {
   const uid = document.getElementById('authUser').value.trim();
   const pwd = document.getElementById('authPass').value;
-  const isSignup = document.getElementById('authTitle').textContent.includes('Create');
+  const isSignup = isSignupMode;
 
   if (!uid || !pwd) return showError("Fill all fields.");
   if (isSignup && pwd !== document.getElementById('authConfirm').value) return showError("Passwords don't match.");
@@ -149,12 +151,20 @@ async function loadImages(reset = false) {
   const btn = document.getElementById('loadMoreBtn');
   const spinner = document.getElementById('loadingSpinner');
 
-  if (reset) {
-    IMAGE_URLS = [];
-    NEXT_START_INDEX = 0;
-    HAS_MORE_IMAGES = true;
-    document.getElementById('gallery').innerHTML = '';
+if (reset) {
+  CURRENT_PAGE = 1;
+  TOTAL_IMAGES_LOADED = 0;
+  IMAGE_URLS = [];
+  HAS_MORE_IMAGES = true;
+
+  // Clear gallery DOM
+  const gallery = document.getElementById('gallery');
+  if (gallery) {
+    while (gallery.firstChild) {
+      gallery.removeChild(gallery.firstChild);
+    }
   }
+}
 
   if (!HAS_MORE_IMAGES) return;
 
@@ -385,6 +395,8 @@ function closeCamera() {
 // 🚀 INIT
 // ==========================
 window.onload = () => {
+  IMAGE_URLS = []; // hard reset in case of weird session caching
+
   if (CURRENT_USER && CURRENT_FOLDER) {
     document.getElementById('authBox').classList.add('hidden');
     document.getElementById('galleryContainer').classList.remove('hidden');
