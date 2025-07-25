@@ -156,23 +156,24 @@ async function handleAuth() {
 async function loadImages(reset = false) {
   if (!CURRENT_FOLDER) return;
 
-if (reset) {
-  CURRENT_PAGE = 1;
-  TOTAL_IMAGES_LOADED = 0;
-  IMAGE_URLS = [];
-  document.getElementById('gallery').innerHTML = '';
-  HAS_MORE_IMAGES = true;
-}
+  const btn = document.getElementById('loadMoreBtn');
+  const spinner = document.getElementById('loadingSpinner');
 
-
-let offset = reset ? 0 : TOTAL_IMAGES_LOADED;
-let limit = reset ? INITIAL_LOAD_COUNT : LOAD_MORE_COUNT;
-
+  if (reset) {
+    CURRENT_PAGE = 1;
+    TOTAL_IMAGES_LOADED = 0;
+    IMAGE_URLS = [];
+    document.getElementById('gallery').innerHTML = '';
+    HAS_MORE_IMAGES = true;
+  }
 
   if (!HAS_MORE_IMAGES) return;
 
-  const btn = document.getElementById('loadMoreBtn');
-  const spinner = document.getElementById('loadingSpinner');
+  const offset = TOTAL_IMAGES_LOADED;
+  const limit = reset ? INITIAL_LOAD_COUNT : LOAD_MORE_COUNT;
+
+  console.log("📦 Fetching images | Offset:", offset, "Limit:", limit);
+
   if (btn) btn.classList.add('hidden');
   if (spinner) spinner.classList.remove('hidden');
 
@@ -183,33 +184,40 @@ let limit = reset ? INITIAL_LOAD_COUNT : LOAD_MORE_COUNT;
   });
 
   if (response && response.success) {
-    if (response.urls.length === 0) {
+    const fetchedUrls = response.urls || [];
+
+    if (fetchedUrls.length === 0) {
       HAS_MORE_IMAGES = false;
       if (btn) btn.classList.add('hidden');
       if (spinner) spinner.classList.add('hidden');
       return;
     }
 
-    response.urls.forEach(url => {
+    fetchedUrls.forEach(url => {
       if (!IMAGE_URLS.includes(url)) {
         IMAGE_URLS.push(url);
         addImageToDOM(url, IMAGE_URLS.length - 1);
       }
     });
-TOTAL_IMAGES_LOADED += response.urls.length;
 
-    if (response.urls.length < limit) {
+    TOTAL_IMAGES_LOADED += fetchedUrls.length;
+
+    // If less than requested, likely no more to load
+    if (fetchedUrls.length < limit) {
       HAS_MORE_IMAGES = false;
       if (btn) btn.classList.add('hidden');
     } else {
+      HAS_MORE_IMAGES = true;
       if (btn) btn.classList.remove('hidden');
     }
+
   } else {
     alert("Failed to load images: " + (response.message || "Unknown error"));
   }
 
   if (spinner) spinner.classList.add('hidden');
 }
+
 function addSkeleton() {
     const div = document.createElement('div');
     div.className = 'gallery-item skeleton';
