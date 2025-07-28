@@ -36,10 +36,11 @@ if ('serviceWorker' in navigator) {
 // ==========================
 async function callAppsScript(action, params = {}) {
   try {
+    const token = localStorage.getItem('skySafeeToken');
     const res = await fetch(SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action, params }),
+      body: JSON.stringify({ action, params, token }),
       redirect: 'follow'
     });
     if (!res.ok) throw new Error(`HTTP error ${res.status}`);
@@ -49,6 +50,7 @@ async function callAppsScript(action, params = {}) {
     return { success: false, message: error.message };
   }
 }
+
 
 // ==========================
 // 🎨 THEME LOGIC
@@ -84,16 +86,28 @@ function applyTheme(theme) {
 }
 
 async function loadTheme() {
+  const cachedTheme = localStorage.getItem('skySafeeTheme');
+  if (cachedTheme && THEMES[cachedTheme]) {
+    applyTheme(THEMES[cachedTheme]); // apply cached instantly
+  }
+
   const res = await callAppsScript('getTheme', { userId: CURRENT_USER });
   const themeName = res.success ? res.theme : 'default';
-  applyTheme(THEMES[themeName] || THEMES.default);
+
+  if (themeName !== cachedTheme) {
+    localStorage.setItem('skySafeeTheme', themeName); // update cache if needed
+    applyTheme(THEMES[themeName] || THEMES.default);
+  }
+
   document.getElementById('themeSelect').value = themeName;
 }
 
 async function changeTheme(themeName) {
   applyTheme(THEMES[themeName]);
+  localStorage.setItem('skySafeeTheme', themeName); // cache it
   await callAppsScript('saveTheme', { userId: CURRENT_USER, themeName });
 }
+
 
 // ==========================
 // 🔐 AUTH LOGIC
@@ -129,6 +143,7 @@ async function handleAuth() {
     CURRENT_FOLDER = res.folderId;
     localStorage.setItem('skySafeeUser', uid);
     localStorage.setItem('skySafeeFolder', res.folderId);
+    localStorage.setItem('skySafeeToken', res.token);
     document.getElementById('authBox').classList.add('hidden');
     document.getElementById('galleryContainer').classList.remove('hidden');
     loadTheme();
@@ -401,7 +416,10 @@ window.onload = () => {
 };
 
 document.getElementById('logoutButton').onclick = () => {
-  localStorage.clear();
+  localStorage.removeItem('skySafeeUser');
+  localStorage.removeItem('skySafeeFolder');
+  localStorage.removeItem('skySafeeToken'); // ← NEW
+  localStorage.removeItem('skySafeeTheme');
   sessionStorage.clear();
   location.reload();
 };
