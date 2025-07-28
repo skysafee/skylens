@@ -37,12 +37,15 @@ if ('serviceWorker' in navigator) {
 async function callAppsScript(action, params = {}) {
   try {
     const token = localStorage.getItem('skySafeeToken');
+    const mergedParams = { ...params, token }; // ← Inject token into params
+
     const res = await fetch(SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action, params, token }),
+      body: JSON.stringify({ action, params: mergedParams }),
       redirect: 'follow'
     });
+
     if (!res.ok) throw new Error(`HTTP error ${res.status}`);
     return await res.json();
   } catch (error) {
@@ -50,6 +53,7 @@ async function callAppsScript(action, params = {}) {
     return { success: false, message: error.message };
   }
 }
+
 
 
 // ==========================
