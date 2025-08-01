@@ -45,14 +45,13 @@ async function callAppsScript(action, params = {}) {
       body: JSON.stringify({ action, params: mergedParams }),
       redirect: 'follow'
     });
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-
-    const data = await res.json();
-
-    if (!data.success && data.message === 'Unauthorized') {
+    const data = await res.json().catch(() => ({ success: false, message: 'Invalid JSON response' }));
+    if (res.status === 401 || (data && data.message === 'Unauthorized')) {
       handleAuthFailure();
-      return { success: false };
+      return { success: false, message: 'Unauthorized' };
     }
+
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
 
     return data;
   } catch (error) {
