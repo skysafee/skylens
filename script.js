@@ -47,7 +47,6 @@ async function callAppsScript(action, params = {}) {
       },
       body: JSON.stringify({ action, params: mergedParams }),
       redirect: 'follow',
-      credentials: 'omit' 
     });
 
     const text = await res.text();
