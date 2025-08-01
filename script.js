@@ -404,7 +404,32 @@ function closeCamera() {
   document.getElementById('cameraVideo').classList.remove('hidden');
   document.getElementById('uploadButton').classList.add('hidden');
 }
+// ──────────────
+// AUTH EXPIRY HANDLER
+// ──────────────
+function handleAuthFailure() {
+  const modal = document.getElementById('authExpiredModal');
+  const countdownEl = document.getElementById('logoutCountdown');
+  let seconds = 5;
 
+  modal.classList.remove('hidden');
+  countdownEl.textContent = `Please log in again. Logging out in ${seconds} seconds...`;
+
+  const timer = setInterval(() => {
+    seconds--;
+    countdownEl.textContent = `Please log in again. Logging out in ${seconds} seconds...`;
+    if (seconds <= 0) {
+      clearInterval(timer);
+      // clear all keys and reload
+      localStorage.removeItem('skySafeeUser');
+      localStorage.removeItem('skySafeeFolder');
+      localStorage.removeItem('skySafeeToken');
+      localStorage.removeItem('skySafeeTheme');
+      sessionStorage.clear();
+      location.reload();
+    }
+  }, 1000);
+}
 // ==========================
 // 🚀 INIT
 // ==========================
