@@ -41,40 +41,45 @@ async function callAppsScript(action, params = {}) {
   try {
     const res = await fetch(SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
       body: JSON.stringify({ action, params: mergedParams }),
-      redirect: 'follow'
+      redirect: 'follow',
+      credentials: 'omit' 
     });
 
     const text = await res.text();
-
     let data;
+
     try {
       data = JSON.parse(text);
     } catch {
-      console.error("Response is not valid JSON:", text);
-      if (res.status === 401) handleAuthFailure();
-      return { success: false, message: "Invalid response format" };
+      console.warn('Non-JSON response:', text);
+      if (res.status === 401) {
+        handleAuthFailure();
+        return { success: false, message: 'Unauthorized' };
+      }
+      return { success: false, message: 'Invalid response' };
     }
 
-    if (res.status === 401 || (data && data.message === 'Unauthorized')) {
+    if (res.status === 401 || data.message === 'Unauthorized') {
       handleAuthFailure();
       return { success: false, message: 'Unauthorized' };
     }
 
     if (!res.ok) {
-      console.warn("Non-OK response:", res.status);
       return { success: false, message: `HTTP ${res.status}` };
     }
 
     return data;
 
-  } catch (error) {
-    console.error("Network or parsing error:", error);
-    return { success: false, message: error.message || "Unknown error" };
+  } catch (err) {
+    console.error('Fetch error:', err);
+    return { success: false, message: err.message || 'Unknown error' };
   }
 }
-
 
 // ==========================
 //  THEME LOGIC
