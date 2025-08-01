@@ -37,7 +37,7 @@ if ('serviceWorker' in navigator) {
 async function callAppsScript(action, params = {}) {
   try {
     const token = localStorage.getItem('skySafeeToken');
-    const mergedParams = { ...params, token }; // ← Inject token into params
+    const mergedParams = { ...params, token };
 
     const res = await fetch(SCRIPT_URL, {
       method: 'POST',
@@ -45,23 +45,21 @@ async function callAppsScript(action, params = {}) {
       body: JSON.stringify({ action, params: mergedParams }),
       redirect: 'follow'
     });
-
     if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
-       const data = await res.json();
-    // intercept Unauthorized
-   if (!data.success && data.message === 'Unauthorized') {
+
+    const data = await res.json();
+
+    if (!data.success && data.message === 'Unauthorized') {
       handleAuthFailure();
       return { success: false };
     }
+
     return data;
   } catch (error) {
     console.error('API Error:', error);
     return { success: false, message: error.message };
   }
 }
-
-
 
 // ==========================
 //  THEME LOGIC
