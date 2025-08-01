@@ -35,30 +35,46 @@ if ('serviceWorker' in navigator) {
 //  API HELPER
 // ==========================
 async function callAppsScript(action, params = {}) {
-  try {
-    const token = localStorage.getItem('skySafeeToken');
-    const mergedParams = { ...params, token };
+  const token = localStorage.getItem('skySafeeToken');
+  const mergedParams = { ...params, token };
 
+  try {
     const res = await fetch(SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action, params: mergedParams }),
       redirect: 'follow'
     });
-    const data = await res.json().catch(() => ({ success: false, message: 'Invalid JSON response' }));
+
+    const text = await res.text();
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      console.error("Response is not valid JSON:", text);
+      if (res.status === 401) handleAuthFailure();
+      return { success: false, message: "Invalid response format" };
+    }
+
     if (res.status === 401 || (data && data.message === 'Unauthorized')) {
       handleAuthFailure();
       return { success: false, message: 'Unauthorized' };
     }
 
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    if (!res.ok) {
+      console.warn("Non-OK response:", res.status);
+      return { success: false, message: `HTTP ${res.status}` };
+    }
 
     return data;
+
   } catch (error) {
-    console.error('API Error:', error);
-    return { success: false, message: error.message };
+    console.error("Network or parsing error:", error);
+    return { success: false, message: error.message || "Unknown error" };
   }
 }
+
 
 // ==========================
 //  THEME LOGIC
