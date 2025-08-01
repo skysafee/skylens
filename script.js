@@ -1,5 +1,5 @@
 // ==========================
-//  CONFIGURATION
+// 🔧 CONFIGURATION
 // ==========================
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzy3ZTT2YpSxJgGPHmPbqD1iR60zBzv_Vr52PR1s4cvWDvH6gW4P4_mOXpJocUhFHFjwQ/exec';
 const INITIAL_LOAD_COUNT = 4;
@@ -9,7 +9,7 @@ let NEXT_START_INDEX = 0;
 let isSignupMode = false;
 
 // ==========================
-//  GLOBAL STATE
+// 🌍 GLOBAL STATE
 // ==========================
 let CURRENT_USER = localStorage.getItem('skySafeeUser');
 let CURRENT_FOLDER = localStorage.getItem('skySafeeFolder');
@@ -21,7 +21,7 @@ let cameraDevices = [];
 let currentCameraIndex = 0;
 
 // ==========================
-//  PWA Service Worker
+// ✨ PWA Service Worker
 // ==========================
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -32,56 +32,32 @@ if ('serviceWorker' in navigator) {
 }
 
 // ==========================
-//  API HELPER
+// 📞 API HELPER
 // ==========================
 async function callAppsScript(action, params = {}) {
-  const token = localStorage.getItem('skySafeeToken');
-  const mergedParams = { ...params, token };
-
   try {
+    const token = localStorage.getItem('skySafeeToken');
+    const mergedParams = { ...params, token }; // ← Inject token into params
+
     const res = await fetch(SCRIPT_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-        'X-Requested-With': 'XMLHttpRequest'
-      },
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action, params: mergedParams }),
-      redirect: 'follow',
+      redirect: 'follow'
     });
 
-    const text = await res.text();
-    let data;
-
-    try {
-      data = JSON.parse(text);
-    } catch {
-      console.warn('Non-JSON response:', text);
-      if (res.status === 401) {
-        handleAuthFailure();
-        return { success: false, message: 'Unauthorized' };
-      }
-      return { success: false, message: 'Invalid response' };
-    }
-
-    if (res.status === 401 || data.message === 'Unauthorized') {
-      handleAuthFailure();
-      return { success: false, message: 'Unauthorized' };
-    }
-
-    if (!res.ok) {
-      return { success: false, message: `HTTP ${res.status}` };
-    }
-
-    return data;
-
-  } catch (err) {
-    console.error('Fetch error:', err);
-    return { success: false, message: err.message || 'Unknown error' };
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    return await res.json();
+  } catch (error) {
+    console.error('API Error:', error);
+    return { success: false, message: error.message };
   }
 }
 
+
+
 // ==========================
-//  THEME LOGIC
+// 🎨 THEME LOGIC
 // ==========================
 const THEMES = {
   default: { bg: "#fff", fg: "#333", card: "#f9f9f9", btn: "#4caf50" },
@@ -138,7 +114,7 @@ async function changeTheme(themeName) {
 
 
 // ==========================
-//  AUTH LOGIC
+// 🔐 AUTH LOGIC
 // ==========================
 function toggleMode(e) {
   e.preventDefault();
@@ -182,7 +158,7 @@ async function handleAuth() {
 }
 
 // ==========================
-//  GALLERY & PAGINATION
+// 🖼️ GALLERY & PAGINATION
 // ==========================
 async function loadImages(reset = false) {
   if (!CURRENT_FOLDER) return;
@@ -303,7 +279,7 @@ dropZone.addEventListener('drop', e => {
 });
 
 // ==========================
-//  LIGHTBOX
+// 💡 LIGHTBOX
 // ==========================
 function openLightbox(index) {
   CURRENT_INDEX = index;
@@ -355,7 +331,7 @@ document.addEventListener('keydown', e => {
 });
 
 // ==========================
-//  CAMERA
+// 📷 CAMERA
 // ==========================
 async function openCamera() {
   document.getElementById('cameraModal').classList.remove('hidden');
@@ -428,34 +404,9 @@ function closeCamera() {
   document.getElementById('cameraVideo').classList.remove('hidden');
   document.getElementById('uploadButton').classList.add('hidden');
 }
-// ──────────────
-// AUTH EXPIRY HANDLER
-// ──────────────
-function handleAuthFailure() {
-  const modal = document.getElementById('authExpiredModal');
-  const countdownEl = document.getElementById('logoutCountdown');
-  let seconds = 5;
 
-  modal.classList.remove('hidden');
-  countdownEl.textContent = `Please log in again. Logging out in ${seconds} seconds...`;
-
-  const timer = setInterval(() => {
-    seconds--;
-    countdownEl.textContent = `Please log in again. Logging out in ${seconds} seconds...`;
-    if (seconds <= 0) {
-      clearInterval(timer);
-      // clear all keys and reload
-      localStorage.removeItem('skySafeeUser');
-      localStorage.removeItem('skySafeeFolder');
-      localStorage.removeItem('skySafeeToken');
-      localStorage.removeItem('skySafeeTheme');
-      sessionStorage.clear();
-      location.reload();
-    }
-  }, 1000);
-}
 // ==========================
-//  INIT
+// 🚀 INIT
 // ==========================
 window.onload = () => {
   IMAGE_URLS = []; // hard reset in case of weird session caching
