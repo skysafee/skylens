@@ -1,5 +1,5 @@
 // ==========================
-// 🔧 CONFIGURATION
+//  CONFIGURATION
 // ==========================
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzy3ZTT2YpSxJgGPHmPbqD1iR60zBzv_Vr52PR1s4cvWDvH6gW4P4_mOXpJocUhFHFjwQ/exec';
 const INITIAL_LOAD_COUNT = 4;
@@ -9,7 +9,7 @@ let NEXT_START_INDEX = 0;
 let isSignupMode = false;
 
 // ==========================
-// 🌍 GLOBAL STATE
+//  GLOBAL STATE
 // ==========================
 let CURRENT_USER = localStorage.getItem('skySafeeUser');
 let CURRENT_FOLDER = localStorage.getItem('skySafeeFolder');
@@ -21,7 +21,7 @@ let cameraDevices = [];
 let currentCameraIndex = 0;
 
 // ==========================
-// ✨ PWA Service Worker
+//  PWA Service Worker
 // ==========================
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -32,7 +32,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // ==========================
-// 📞 API HELPER
+//  API HELPER
 // ==========================
 async function callAppsScript(action, params = {}) {
   try {
@@ -48,6 +48,13 @@ async function callAppsScript(action, params = {}) {
 
     if (!res.ok) throw new Error(`HTTP error ${res.status}`);
     return await res.json();
+       const data = await res.json();
+    // intercept Unauthorized
+   if (!data.success && data.message === 'Unauthorized') {
+      handleAuthFailure();
+      return { success: false };
+    }
+    return data;
   } catch (error) {
     console.error('API Error:', error);
     return { success: false, message: error.message };
@@ -57,7 +64,7 @@ async function callAppsScript(action, params = {}) {
 
 
 // ==========================
-// 🎨 THEME LOGIC
+//  THEME LOGIC
 // ==========================
 const THEMES = {
   default: { bg: "#fff", fg: "#333", card: "#f9f9f9", btn: "#4caf50" },
@@ -114,7 +121,7 @@ async function changeTheme(themeName) {
 
 
 // ==========================
-// 🔐 AUTH LOGIC
+//  AUTH LOGIC
 // ==========================
 function toggleMode(e) {
   e.preventDefault();
@@ -158,7 +165,7 @@ async function handleAuth() {
 }
 
 // ==========================
-// 🖼️ GALLERY & PAGINATION
+//  GALLERY & PAGINATION
 // ==========================
 async function loadImages(reset = false) {
   if (!CURRENT_FOLDER) return;
@@ -279,7 +286,7 @@ dropZone.addEventListener('drop', e => {
 });
 
 // ==========================
-// 💡 LIGHTBOX
+//  LIGHTBOX
 // ==========================
 function openLightbox(index) {
   CURRENT_INDEX = index;
@@ -331,7 +338,7 @@ document.addEventListener('keydown', e => {
 });
 
 // ==========================
-// 📷 CAMERA
+//  CAMERA
 // ==========================
 async function openCamera() {
   document.getElementById('cameraModal').classList.remove('hidden');
@@ -431,7 +438,7 @@ function handleAuthFailure() {
   }, 1000);
 }
 // ==========================
-// 🚀 INIT
+//  INIT
 // ==========================
 window.onload = () => {
   IMAGE_URLS = []; // hard reset in case of weird session caching
