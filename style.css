@@ -120,18 +120,24 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Ro
 }
 .hidden { display: none !important; }
 
-#authExpiredModal {
-  position: fixed;
-  top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(0,0,0,0.7);
-  display: flex; justify-content: center; align-items: center;
-  z-index: 4000;
+.modal.hidden {
+  display: none;
 }
-
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
 .modal-content {
-  background: #fff;
-  padding: 1.5rem;
+  background: #333;
+  padding: 20px;
   border-radius: 8px;
-  text-align: center;
-  max-width: 80%;
 }
