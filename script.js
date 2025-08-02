@@ -140,7 +140,16 @@ async function handleAuth() {
   if (isSignup && pwd !== document.getElementById('authConfirm').value) return showError("Passwords don't match.");
 
   const action = isSignup ? 'createUser' : 'verifyLogin';
+
+  const button = document.querySelector('#authBox button');
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = isSignup ? 'Signing up...' : 'Logging in...';
+  
   const res = await callAppsScript(action, { userId: uid, password: pwd });
+
+  button.disabled = false;
+  button.textContent = originalText;
 
   if (res.success) {
     CURRENT_USER = uid;
@@ -156,6 +165,7 @@ async function handleAuth() {
     showError(res.message || 'Error');
   }
 }
+
 
 // ==========================
 // 🖼️ GALLERY & PAGINATION
@@ -388,11 +398,18 @@ function captureImage() {
 
 function cropAndUpload() {
   if (!cropper) return;
+  const btn = document.getElementById('uploadButton');
+  btn.disabled = true;
+  btn.textContent = 'Uploading...';
+
   cropper.getCroppedCanvas().toBlob(blob => {
     processAndUpload(new File([blob], `webcam_${Date.now()}.png`, { type: 'image/png' }));
+    btn.disabled = false;
+    btn.textContent = 'Upload';
     closeCamera();
   }, 'image/png');
 }
+
 
 function closeCamera() {
   if (videoStream) videoStream.getTracks().forEach(track => track.stop());
