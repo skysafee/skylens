@@ -398,14 +398,8 @@ function captureImage() {
 
 function cropAndUpload() {
   if (!cropper) return;
-  const btn = document.getElementById('uploadButton');
-  btn.disabled = true;
-  btn.textContent = 'Uploading...';
-
   cropper.getCroppedCanvas().toBlob(blob => {
-    processAndUpload(new File([blob], `webcam_${Date.now()}.png`, { type: 'image/png' }));
-    btn.disabled = false;
-    btn.textContent = 'Upload';
+    processAndUpload(new File([blob], webcam_${Date.now()}.png, { type: 'image/png' }));
     closeCamera();
   }, 'image/png');
 }
