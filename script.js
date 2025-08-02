@@ -30,6 +30,26 @@ if ('serviceWorker' in navigator) {
       .catch(err => console.error('ServiceWorker registration failed:', err));
   });
 }
+navigator.serviceWorker?.addEventListener('message', event => {
+  if (event.data?.type === 'SKY_UPDATE') {
+    const banner = document.createElement('div');
+    banner.textContent = "SkyLens was updated!";
+    banner.style.position = 'fixed';
+    banner.style.bottom = '20px';
+    banner.style.left = '50%';
+    banner.style.transform = 'translateX(-50%)';
+    banner.style.background = '#4caf50';
+    banner.style.color = '#fff';
+    banner.style.padding = '0.8rem 1.2rem';
+    banner.style.borderRadius = '8px';
+    banner.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)';
+    banner.style.zIndex = '9999';
+    document.body.appendChild(banner);
+
+    setTimeout(() => banner.remove(), 4000);
+  }
+});
+
 
 // ==========================
 // 📞 API HELPER
