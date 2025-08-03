@@ -46,7 +46,7 @@ navigator.serviceWorker?.addEventListener('message', event => {
     banner.style.zIndex = '9999';
     document.body.appendChild(banner);
 
-    setTimeout(() => banner.remove(), 4000);
+    setTimeout(() => banner.remove(), 8000);
   }
 });
 
