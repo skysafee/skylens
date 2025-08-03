@@ -12,7 +12,6 @@ let isSignupMode = false;
 // 🌍 GLOBAL STATE
 // ==========================
 let CURRENT_USER = localStorage.getItem('skySafeeUser');
-let CURRENT_FOLDER = localStorage.getItem('skySafeeFolder');
 let IMAGE_URLS = [];
 let CURRENT_INDEX = -1;
 let videoStream = null;
@@ -45,19 +44,16 @@ navigator.serviceWorker?.addEventListener('message', event => {
     banner.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)';
     banner.style.zIndex = '9999';
     document.body.appendChild(banner);
-
     setTimeout(() => banner.remove(), 8000);
   }
 });
-
-
 // ==========================
 // 📞 API HELPER
 // ==========================
 async function callAppsScript(action, params = {}) {
   try {
     const token = localStorage.getItem('skySafeeToken');
-    const mergedParams = { ...params, token }; // ← Inject token into params
+    const mergedParams = { ...params, token };
 
     const res = await fetch(SCRIPT_URL, {
       method: 'POST',
@@ -73,8 +69,6 @@ async function callAppsScript(action, params = {}) {
     return { success: false, message: error.message };
   }
 }
-
-
 
 // ==========================
 // 🎨 THEME LOGIC
@@ -112,14 +106,14 @@ function applyTheme(theme) {
 async function loadTheme() {
   const cachedTheme = localStorage.getItem('skySafeeTheme');
   if (cachedTheme && THEMES[cachedTheme]) {
-    applyTheme(THEMES[cachedTheme]); // apply cached instantly
+    applyTheme(THEMES[cachedTheme]);
   }
 
   const res = await callAppsScript('getTheme', { userId: CURRENT_USER });
   const themeName = res.success ? res.theme : 'default';
 
   if (themeName !== cachedTheme) {
-    localStorage.setItem('skySafeeTheme', themeName); // update cache if needed
+    localStorage.setItem('skySafeeTheme', themeName);
     applyTheme(THEMES[themeName] || THEMES.default);
   }
 
@@ -128,10 +122,9 @@ async function loadTheme() {
 
 async function changeTheme(themeName) {
   applyTheme(THEMES[themeName]);
-  localStorage.setItem('skySafeeTheme', themeName); // cache it
+  localStorage.setItem('skySafeeTheme', themeName);
   await callAppsScript('saveTheme', { userId: CURRENT_USER, themeName });
 }
-
 
 // ==========================
 // 🔐 AUTH LOGIC
@@ -146,7 +139,6 @@ function toggleMode(e) {
   document.getElementById('authError').textContent = '';
 }
 
-
 function showError(msg) {
   document.getElementById('authError').textContent = msg;
 }
@@ -160,12 +152,11 @@ async function handleAuth() {
   if (isSignup && pwd !== document.getElementById('authConfirm').value) return showError("Passwords don't match.");
 
   const action = isSignup ? 'createUser' : 'verifyLogin';
-
   const button = document.querySelector('#authBox button');
   button.disabled = true;
   const originalText = button.textContent;
   button.textContent = isSignup ? 'Signing up...' : 'Logging in...';
-  
+
   const res = await callAppsScript(action, { userId: uid, password: pwd });
 
   button.disabled = false;
@@ -173,9 +164,7 @@ async function handleAuth() {
 
   if (res.success) {
     CURRENT_USER = uid;
-    CURRENT_FOLDER = res.folderId;
     localStorage.setItem('skySafeeUser', uid);
-    localStorage.setItem('skySafeeFolder', res.folderId);
     localStorage.setItem('skySafeeToken', res.token);
     document.getElementById('authBox').classList.add('hidden');
     document.getElementById('galleryContainer').classList.remove('hidden');
@@ -185,30 +174,25 @@ async function handleAuth() {
     showError(res.message || 'Error');
   }
 }
-
-
 // ==========================
 // 🖼️ GALLERY & PAGINATION
 // ==========================
 async function loadImages(reset = false) {
-  if (!CURRENT_FOLDER) return;
+  if (!CURRENT_USER) return;
 
   const btn = document.getElementById('loadMoreBtn');
   const spinner = document.getElementById('loadingSpinner');
 
-if (reset) {
-  // Reset pagination state
-  IMAGE_URLS = [];
-  NEXT_START_INDEX = 0;     // ← **NEW**: reset start index!
-  HAS_MORE_IMAGES = true;
+  if (reset) {
+    IMAGE_URLS = [];
+    NEXT_START_INDEX = 0;
+    HAS_MORE_IMAGES = true;
 
-  // Fully clear the gallery DOM
-  const gallery = document.getElementById('gallery');
-  while (gallery.firstChild) {
-    gallery.removeChild(gallery.firstChild);
+    const gallery = document.getElementById('gallery');
+    while (gallery.firstChild) {
+      gallery.removeChild(gallery.firstChild);
+    }
   }
-}
-
 
   if (!HAS_MORE_IMAGES) return;
 
@@ -216,7 +200,6 @@ if (reset) {
   if (spinner) spinner.classList.remove('hidden');
 
   const res = await callAppsScript('getPaginatedImages', {
-    folderId: CURRENT_FOLDER,
     startIndex: NEXT_START_INDEX,
     limit: reset ? INITIAL_LOAD_COUNT : LOAD_MORE_COUNT
   });
@@ -275,8 +258,7 @@ function processAndUpload(file) {
     const dataUrl = reader.result;
     const res = await callAppsScript('uploadToDrive', {
       dataUrl,
-      filename: file.name,
-      folderId: CURRENT_FOLDER
+      filename: file.name
     });
     tempDiv.remove();
     if (res.success) {
@@ -336,7 +318,6 @@ async function deleteCurrentImage() {
   if (!url || !confirm('Delete this image permanently?')) return;
 
   const res = await callAppsScript('deleteImage', {
-    folderId: CURRENT_FOLDER,
     imageUrl: url
   });
 
@@ -359,7 +340,6 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowRight') showNext();
   if (e.key === 'ArrowLeft') showPrev();
 });
-
 // ==========================
 // 📷 CAMERA
 // ==========================
@@ -424,7 +404,6 @@ function cropAndUpload() {
   }, 'image/png');
 }
 
-
 function closeCamera() {
   if (videoStream) videoStream.getTracks().forEach(track => track.stop());
   if (cropper) cropper.destroy();
@@ -440,9 +419,9 @@ function closeCamera() {
 // 🚀 INIT
 // ==========================
 window.onload = () => {
-  IMAGE_URLS = []; // hard reset in case of weird session caching
+  IMAGE_URLS = [];
 
-  if (CURRENT_USER && CURRENT_FOLDER) {
+  if (CURRENT_USER) {
     document.getElementById('authBox').classList.add('hidden');
     document.getElementById('galleryContainer').classList.remove('hidden');
     loadTheme();
@@ -450,10 +429,13 @@ window.onload = () => {
   }
 };
 
-document.getElementById('logoutButton').onclick = () => {
+document.getElementById('logoutButton').onclick = async () => {
+  const token = localStorage.getItem('skySafeeToken');
+  if (token) await callAppsScript('logout', { token });
+
   localStorage.removeItem('skySafeeUser');
   localStorage.removeItem('skySafeeFolder');
-  localStorage.removeItem('skySafeeToken'); // ← NEW
+  localStorage.removeItem('skySafeeToken');
   localStorage.removeItem('skySafeeTheme');
   sessionStorage.clear();
   location.reload();
