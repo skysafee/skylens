@@ -1,12 +1,12 @@
-const CACHE_NAME = 'skylens-v2'; // bump this on every deploy
+const CACHE_NAME = 'skylens-v3'; // bump this on every deploy
 const URLS_TO_CACHE = [
   '/',
   'index.html',
   'style.css',
   'script.js',
   'manifest.json',
-  'https://unpkg.com/cropperjs@1.5.13/dist/cropper.min.js',
-  'https://unpkg.com/cropperjs@1.5.13/dist/cropper.min.css'
+  'lenscrop.min.js',
+  'lensstyle.min.css'
 ];
 
 self.addEventListener('install', event => {
