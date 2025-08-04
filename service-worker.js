@@ -1,4 +1,4 @@
-const CACHE_NAME = 'skylens-v4'; // bump this on every deploy
+const CACHE_NAME = 'skylens-v5'; // bump this on every deploy
 const URLS_TO_CACHE = [
   '/',
   'index.html',
@@ -6,10 +6,11 @@ const URLS_TO_CACHE = [
   'script.js',
   'manifest.json',
   'lenscrop.min.js',
-  'lensstyle.min.css'
+  'lensstyle.min.css',
+  'offline.html'
 ];
 
-// 🔧 INSTALL: cache assets and log failures
+// INSTALL: cache assets and log failures
 self.addEventListener('install', event => {
   self.skipWaiting(); // activate new worker immediately
   event.waitUntil(
@@ -47,7 +48,17 @@ self.addEventListener('activate', event => {
 // FETCH: serve from cache first, then fallback to network
 self.addEventListener('fetch', event => {
   event.respondWith(
-    caches.match(event.request)
-      .then(response => response || fetch(event.request))
+    fetch(event.request).catch(() => {
+      return caches.match(event.request).then(response => {
+        // Try to serve from cache
+        if (response) return response;
+
+        // If HTML request, show offline fallback
+        if (event.request.headers.get('accept')?.includes('text/html')) {
+          return caches.match('offline.html');
+        }
+      });
+    })
   );
 });
+
