@@ -430,15 +430,25 @@ window.onload = () => {
 };
 
 document.getElementById('logoutButton').onclick = async () => {
-  const token = localStorage.getItem('skySafeeToken');
-  if (token) await callAppsScript('logout', { token });
+  const btn = document.getElementById('logoutButton');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Logging out...";
+
+  try {
+    const token = localStorage.getItem('skySafeeToken');
+    if (token) await callAppsScript('logout', { token });
+  } catch (err) {
+    console.warn("Logout error:", err.message);
+  }
 
   localStorage.removeItem('skySafeeUser');
   localStorage.removeItem('skySafeeFolder');
   localStorage.removeItem('skySafeeToken');
   localStorage.removeItem('skySafeeTheme');
   sessionStorage.clear();
-  location.reload();
+
+  setTimeout(() => location.reload(), 500);
 };
 
 document.getElementById('loadMoreBtn').onclick = () => loadImages();
