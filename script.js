@@ -7,6 +7,16 @@ const LOAD_MORE_COUNT = 20;
 let HAS_MORE_IMAGES = true;
 let NEXT_START_INDEX = 0;
 let isSignupMode = false;
+// ── Note Feature Handlers ───────────────────────────────────────────────────
+
+// Cache DOM refs
+const noteBtn        = document.getElementById('lightboxNoteBtn');
+const notePanel      = document.getElementById('notePanel');
+const noteTextarea   = document.getElementById('noteTextarea');
+const editNoteBtn    = document.getElementById('editNoteBtn');
+const saveNoteBtn    = document.getElementById('saveNoteBtn');
+
+let currentNote = '';  // to store fetched note
 
 // ==========================
 // 🌍 GLOBAL STATE
@@ -414,6 +424,92 @@ function closeCamera() {
   document.getElementById('cameraVideo').classList.remove('hidden');
   document.getElementById('uploadButton').classList.add('hidden');
 }
+
+// Show/hide panel
+noteBtn.onclick = async () => {
+  // Toggle panel visibility
+  const isOpen = !notePanel.classList.contains('hidden');
+  if (isOpen) {
+    notePanel.classList.add('hidden');
+    return;
+  }
+  notePanel.classList.remove('hidden');
+
+  // Fetch existing note
+  const url = IMAGE_URLS[CURRENT_INDEX];
+  const res = await callAppsScript('getImageNote', { imageUrl: url });
+  if (res.success) {
+    currentNote = res.note || '';
+  } else {
+    currentNote = '';
+    console.warn('getImageNote error:', res.message);
+  }
+
+  // Populate textarea & determine state
+  noteTextarea.value = currentNote;
+  if (currentNote) {
+    // Existing note: readonly + show Edit
+    noteTextarea.readOnly = true;
+    editNoteBtn.classList.remove('hidden');
+    saveNoteBtn.classList.add('hidden');
+  } else {
+    // No note: editable + show Save
+    noteTextarea.readOnly = false;
+    editNoteBtn.classList.add('hidden');
+    saveNoteBtn.classList.remove('hidden');
+  }
+};
+
+// Enable editing
+editNoteBtn.onclick = () => {
+  noteTextarea.readOnly = false;
+  editNoteBtn.classList.add('hidden');
+  saveNoteBtn.classList.remove('hidden');
+  noteTextarea.focus();
+};
+
+// Save note
+saveNoteBtn.onclick = async () => {
+  const url = IMAGE_URLS[CURRENT_INDEX];
+  const newNote = noteTextarea.value.trim();
+
+  // Disable button while saving
+  saveNoteBtn.disabled = true;
+  saveNoteBtn.textContent = 'Saving…';
+
+  const res = await callAppsScript('saveImageNote', {
+    imageUrl: url,
+    note: newNote
+  });
+
+  // Restore button
+  saveNoteBtn.disabled = false;
+  saveNoteBtn.textContent = 'Save';
+
+  if (res.success) {
+    currentNote = newNote;
+    // Switch back to readonly and toggle buttons
+    noteTextarea.readOnly = true;
+    saveNoteBtn.classList.add('hidden');
+    editNoteBtn.classList.remove('hidden');
+    // Quick feedback
+    const toast = document.createElement('div');
+    toast.textContent = '✓ Note saved';
+    toast.style.position = 'fixed';
+    toast.style.bottom = '20px';
+    toast.style.left = '50%';
+    toast.style.transform = 'translateX(-50%)';
+    toast.style.background = 'var(--btn-bg)';
+    toast.style.color = '#fff';
+    toast.style.padding = '0.6rem 1rem';
+    toast.style.borderRadius = '5px';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
+  } else {
+    alert('Failed to save note: ' + res.message);
+  }
+};
+
 
 // ==========================
 // 🚀 INIT
