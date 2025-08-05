@@ -52,10 +52,25 @@
   <div id="lightboxOverlay" class="hidden">
     <span id="lightboxClose">×</span>
     <img id="lightboxImage" src="" alt="Preview" />
-    <button id="lightboxPrev">‹</button>
-    <button id="lightboxNext">›</button>
-    <button id="lightboxDelete" title="Delete Image">🗑️</button>
+
+    <div class="lightbox-controls">
+      <button id="lightboxPrev">‹</button>
+      <button id="lightboxNext">›</button>
+      <button id="lightboxDelete" title="Delete Image">🗑️</button>
+      <!-- NEW: Note button -->
+      <button id="lightboxNoteBtn" title="View / Edit Note">📝 Note</button>
+    </div>
+
+    <!-- NEW: Inline Note Panel -->
+    <div id="notePanel" class="hidden">
+      <textarea id="noteTextarea" readonly placeholder="No note yet…"></textarea>
+      <div class="noteActions">
+        <button id="editNoteBtn" class="hidden">Edit</button>
+        <button id="saveNoteBtn" class="hidden">Save</button>
+      </div>
+    </div>
   </div>
+
 
   <!-- Webcam Modal -->
   <div id="cameraModal" class="hidden">
