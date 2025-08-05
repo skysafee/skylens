@@ -305,6 +305,11 @@ dropZone.addEventListener('drop', e => {
 // ==========================
 function openLightbox(index) {
   CURRENT_INDEX = index;
+  notePanel.classList.add('hidden');
+  noteTextarea.value = '';
+  noteTextarea.readOnly = true;
+  editNoteBtn.classList.add('hidden');
+  saveNoteBtn.classList.add('hidden');
   document.getElementById('lightboxImage').src = IMAGE_URLS[index];
   document.getElementById('lightboxOverlay').classList.remove('hidden');
 }
@@ -334,6 +339,11 @@ async function deleteCurrentImage() {
   if (res.success) {
     document.querySelector(`.gallery-item[data-url="${url}"]`)?.remove();
     IMAGE_URLS.splice(CURRENT_INDEX, 1);
+  notePanel.classList.add('hidden');
+  noteTextarea.value = '';
+  noteTextarea.readOnly = true;
+  editNoteBtn.classList.add('hidden');
+  saveNoteBtn.classList.add('hidden');
     closeLightbox();
   } else {
     alert("Delete failed: " + res.message);
