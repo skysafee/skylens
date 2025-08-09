@@ -1,93 +1,158 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>SkySafee Cloud Gallery</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#4caf50"/>
-  <link rel="manifest" href="manifest.json">
-  <link href="lensstyle.min.css" rel="stylesheet" />
-  <script src="lenscrop.min.js"></script>
-  <link rel="stylesheet" href="style.css">
+  <title>Skylens</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Ankuuu" />
+  <meta name="theme-color" content="#4caf50" />
+
+  <!-- PWA manifest & preconnect for faster macros fetch -->
+  <link rel="manifest" href="manifest.json" />
+  <link rel="preconnect" href="https://script.google.com" crossorigin />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="lensstyle.min.css" />
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Cropper lib (kept as-is) -->
+  <script src="lenscrop.min.js" defer></script>
 </head>
+
 <body>
-  <div id="offlineStatus" class="hidden">Oops! You're offline :(</div>
-  <!-- AUTH UI -->
-  <div class="centered-box" id="authBox">
+  <!-- Offline announce (aria-live) -->
+  <div id="offlineStatus" class="hidden" role="status" aria-live="polite">Oops! You're offline :(</div>
+
+  <!-- Auth modal (centered) -->
+  <div class="centered-box" id="authBox" role="dialog" aria-modal="true" aria-labelledby="authTitle">
     <h2 id="authTitle">Login to SkySafee</h2>
-    <input type="text" id="authUser" placeholder="User ID" />
-    <input type="password" id="authPass" placeholder="Password" />
-    <input type="password" id="authConfirm" placeholder="Confirm Password" class="hidden" />
-    <button onclick="handleAuth()">Login</button>
-    <div class="error" id="authError"></div>
-    <p style="margin-top:1rem;"><a href="#" onclick="toggleMode(event)" style="color:#aaa;">Don't have an account? Sign up</a></p>
+
+    <label for="authUser" class="sr-only">User ID</label>
+    <input type="text" id="authUser" placeholder="User ID" autocomplete="username" />
+
+    <label for="authPass" class="sr-only">Password</label>
+    <input type="password" id="authPass" placeholder="Password" autocomplete="current-password" />
+
+    <label for="authConfirm" class="sr-only">Confirm password</label>
+    <input type="password" id="authConfirm" placeholder="Confirm Password" class="hidden" autocomplete="new-password" />
+
+    <button type="button" onclick="handleAuth()">Login</button>
+
+    <div class="error" id="authError" aria-live="polite"></div>
+
+    <p style="margin-top:1rem;">
+      <a href="#" onclick="toggleMode(event)" style="color:#aaa;">Don't have an account? Sign up</a>
+    </p>
+
+    <!-- Helpful hint for users without JS -->
+    <noscript style="color:#ff6b6b; margin-top:0.5rem; display:block">
+      This app requires JavaScript. Please enable JavaScript in your browser.
+    </noscript>
   </div>
 
-  <!-- GALLERY UI -->
-  <div id="galleryContainer" class="hidden">
-    <h2>SkySafee Cloud Gallery</h2>
-    <div style="margin-bottom: 1rem;">
-      <label for="themeSelect">🎨 Theme: </label>
-      <select id="themeSelect" onchange="changeTheme(this.value)">
-        <option value="default">Default</option>
-        <option value="dark">Dark</option>
-        <option value="ocean">Ocean</option>
-        <option value="sunset">Sunset</option>
-      </select>
-    </div>
+  <main id="galleryContainer" class="hidden" class="container" role="main" aria-labelledby="galleryTitle">
+    <header style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+      <div>
+        <h1 id="galleryTitle" style="margin:0;font-size:1.25rem">SkySafee Cloud Gallery</h1>
+        <p style="margin:6px 0 0 0; color:var(--muted); font-size:.95rem">Your private images, backed by Drive.</p>
+      </div>
 
-    <div id="actions">
-      <div id="dropZone">
-        <p>📁 Drag & drop or click to upload images</p>
+      <div style="display:flex;gap:10px;align-items:center">
+        <label for="themeSelect" style="font-size:.95rem;margin-right:6px">🎨</label>
+        <select id="themeSelect" onchange="changeTheme(this.value)" aria-label="Select theme">
+          <option value="default">Default</option>
+          <option value="dark">Dark</option>
+          <option value="ocean">Ocean</option>
+          <option value="sunset">Sunset</option>
+        </select>
+      </div>
+    </header>
+
+    <section id="actions" aria-label="Actions">
+      <!-- Drop zone and file input -->
+      <div id="dropZone" role="button" tabindex="0" aria-label="Upload images — click or drop files">
+        <p style="margin:0;">📁 Drag & drop or click to upload images</p>
         <input type="file" id="imageInput" accept="image/*" multiple hidden />
       </div>
-      <button onclick="openCamera()">📷 Camera</button>
-      <button id="logoutButton">Logout</button>
+
+      <div style="display:flex;gap:8px;align-items:center">
+        <button type="button" onclick="openCamera()">📷 Camera</button>
+        <button type="button" id="logoutButton">Logout</button>
+      </div>
+    </section>
+
+    <!-- Gallery grid -->
+    <section class="gallery" id="gallery" aria-live="polite" aria-label="Image gallery"></section>
+
+    <!-- Load more + spinner -->
+    <div style="text-align:center; margin-top:12px">
+      <button id="loadMoreBtn" class="load-more-btn hidden" type="button">More</button>
+      <div id="loadingSpinner" class="hidden" aria-hidden="true">
+        <div class="spinner" role="status" aria-hidden="true"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Lightbox / viewer -->
+  <div id="lightboxOverlay" class="hidden" role="dialog" aria-modal="true" aria-label="Image preview">
+    <button id="lightboxClose" type="button" aria-label="Close preview">×</button>
+
+    <img id="lightboxImage" src="" alt="Image preview" />
+
+    <div class="lightbox-controls" role="toolbar" aria-label="Lightbox controls">
+      <button id="lightboxPrev" type="button" aria-label="Previous image">‹</button>
+      <button id="lightboxNext" type="button" aria-label="Next image">›</button>
+      <button id="lightboxDelete" type="button" title="Delete Image" aria-label="Delete image">🗑️</button>
+      <button id="lightboxNoteBtn" type="button" title="View / Edit Note" aria-label="View or edit note">📝 Note</button>
     </div>
 
-    <div class="gallery" id="gallery"></div>
-  </div>
-
-  <!-- Lightbox Viewer -->
-  <div id="lightboxOverlay" class="hidden">
-    <span id="lightboxClose">×</span>
-    <img id="lightboxImage" src="" alt="Preview" />
-
-    <div class="lightbox-controls">
-      <button id="lightboxPrev">‹</button>
-      <button id="lightboxNext">›</button>
-      <button id="lightboxDelete" title="Delete Image">🗑️</button>
-      <!-- NEW: Note button -->
-      <button id="lightboxNoteBtn" title="View / Edit Note">📝 Note</button>
-    </div>
-
-    <!-- NEW: Inline Note Panel -->
-    <div id="notePanel" class="hidden">
+    <!-- Inline Note Panel -->
+    <div id="notePanel" class="hidden" aria-hidden="true">
+      <label for="noteTextarea" class="sr-only">Image note</label>
       <textarea id="noteTextarea" readonly placeholder="No note yet…"></textarea>
       <div class="noteActions">
-        <button id="editNoteBtn" class="hidden">Edit</button>
-        <button id="saveNoteBtn" class="hidden">Save</button>
+        <button id="editNoteBtn" class="hidden" type="button">Edit</button>
+        <button id="saveNoteBtn" class="hidden" type="button">Save</button>
       </div>
     </div>
   </div>
 
-
-  <!-- Webcam Modal -->
-  <div id="cameraModal" class="hidden">
+  <!-- Camera / cropper modal -->
+  <div id="cameraModal" class="hidden" role="dialog" aria-modal="true" aria-label="Camera">
     <video id="cameraVideo" autoplay playsinline></video>
-    <canvas id="cameraCanvas" class="hidden"></canvas>
+    <canvas id="cameraCanvas" class="hidden" aria-hidden="true"></canvas>
+
     <div id="cropperContainer">
-      <img id="cameraImage" class="hidden" />
+      <img id="cameraImage" class="hidden" alt="Captured photo" />
     </div>
-    <div id="cameraButtons">
-      <button onclick="switchCamera()">🔄 Switch</button>
-      <button onclick="cropAndUpload()" id="uploadButton" class="hidden">✅ Crop & Upload</button>
-      <button onclick="captureImage()">📸 Capture</button>
-      <button onclick="closeCamera()">❌ Cancel</button>
+
+    <div id="cameraButtons" aria-label="Camera controls">
+      <button type="button" onclick="switchCamera()">🔄 Switch</button>
+      <button type="button" onclick="cropAndUpload()" id="uploadButton" class="hidden">✅ Crop & Upload</button>
+      <button type="button" onclick="captureImage()">📸 Capture</button>
+      <button type="button" onclick="closeCamera()">❌ Cancel</button>
     </div>
   </div>
-  <button id="loadMoreBtn" class="load-more-btn hidden">More</button>
-<div id="loadingSpinner" class="hidden"><div class="spinner"></div></div>
-  <script src="script.js"></script>
+
+  <!-- Service worker + main script -->
+  <script>
+    // tiny helper to forward click on dropZone to hidden file input (keeps progressive enhancement)
+    document.addEventListener('click', (e) => {
+      const dz = document.getElementById('dropZone');
+      if (!dz) return;
+      if (e.target === dz || dz.contains(e.target)) {
+        const input = document.getElementById('imageInput');
+        if (input) input.click();
+      }
+    });
+  </script>
+
+  <script src="script.js" defer></script>
+  <script>
+    // Register service worker (kept here to run after script is loaded)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js').catch(()=>{/* ignore registration errors */});
+    }
+  </script>
 </body>
 </html>
