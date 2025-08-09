@@ -1,183 +1,314 @@
-:root {
-  --bg: #fff;
-  --fg: #333;
+/* =========================
+   SkySafee — style.css
+   Modern, fast, accessible, compatible
+   ========================= */
+
+:root{
+  /* Theme vars (kept compatible with your JS) */
+  --bg: #ffffff;
+  --fg: #222222;
   --card-bg: #f9f9f9;
   --btn-bg: #4caf50;
+  --btn: var(--btn-bg);            /* old references */
   --btn-hover: #45a047;
   --drop-bg: rgba(33,150,243,0.08);
   --drop-border: #2196f3;
-}
-#offlineStatus {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  background: #c2020c;
-  color: #ffffff;
-  text-align: center;
-  padding: 0.6rem;
-  font-weight: bold;
-  z-index: 3000;
-  transition: opacity 0.3s ease;
-}
-body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--fg); }
-.hidden { display: none !important; }
-.centered-box {
-  position: fixed; inset: 0; background: black; color: white;
-  display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000;
-}
-.centered-box input, .centered-box button {
-  margin: 0.5rem; padding: 0.6rem; width: 220px; font-size: 1rem;
-  border-radius: 5px; border: none;
-}
-.centered-box button { background: var(--btn-bg); color: white; cursor: pointer; }
-.error { color: red; font-size: 0.9rem; height: 1.2rem; }
-#galleryContainer { padding: 1rem 2rem; }
-#dropZone {
-  border: 2px dashed var(--drop-border); background: var(--drop-bg);
-  padding: 2rem; border-radius: 10px; text-align: center; cursor: pointer; margin-bottom: 1rem; flex-grow: 1;
-}
-.skeleton {
-  border-radius: 10px;
-  background: linear-gradient(90deg, #eeeeee 25%, #dddddd 50%, #eeeeee 75%);
-  background-size: 200% 100%;
-  animation: shimmer 2s infinite linear;
-  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-}
-@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 12px; }
-.gallery-item {
-  background: var(--card-bg); padding-bottom: 100%; position: relative;
-  border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-}
-.gallery-item img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-.gallery-item > .skeleton { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-#actions { display: flex; gap: 10px; margin-bottom: 1rem; flex-wrap: wrap; }
-#actions button { background: var(--btn-bg); color: white; padding: 0.6rem 1.2rem; border: none; border-radius: 5px; cursor: pointer; font-size: 1rem; }
-.load-more-btn {
-  display: block;
-  margin: 20px auto;
-  padding: 10px 20px;
-  font-weight: bold;
-  background-color: var(--btn);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
+
+  /* UI constants */
+  --muted: #9aa4b2;
+  --accent: var(--btn-bg);
+  --radius: 10px;
+  --gap: 12px;
+  --shadow: 0 6px 20px rgba(17,24,39,0.06);
+  --glass: rgba(255,255,255,0.6);
+  --max-width: 1100px;
 }
 
-#lightboxOverlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.9);
-  display: flex; align-items: center; justify-content: center; z-index: 2000; flex-direction: column;
-}
-#lightboxOverlay img { max-width: 90%; max-height: 80vh; border-radius: 10px; box-shadow: 0 0 20px rgba(255,255,255,0.2); }
-#lightboxOverlay.hidden { display: none; }
-#lightboxClose { position: absolute; top: 20px; right: 30px; font-size: 2rem; color: white; cursor: pointer; }
-#lightboxPrev, #lightboxNext {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  font-size: 2rem; background: rgba(255,255,255,0.2);
-  color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 5px;
-}
-#lightboxPrev { left: 30px; }
-#lightboxNext { right: 30px; }
-#lightboxDelete {
-    position: absolute; bottom: 20px;
-    font-size: 1.5rem; background: rgba(255, 82, 82, 0.7);
-    color: white; border: none; padding: 10px 15px;
-    cursor: pointer; border-radius: 50%;
-}
-#cameraModal {
-    position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;flex-direction:column;
-    padding: 1rem; box-sizing: border-box; overflow-y: auto;
-}
-#cameraModal video, #cameraModal #cropperContainer { max-width:90%; border:4px solid #fff; border-radius:10px; }
-#cameraModal #cropperContainer { max-height:70vh; overflow:auto; display:flex; flex-direction:column; align-items:center; }
-#cameraModal img { object-fit: contain; max-width:100%; max-height:60vh; border-radius:10px; margin-bottom:1rem; }
-#cameraButtons { margin-top:1rem; display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
-#cameraButtons button {
-    margin: 0 5px; padding: 0.6rem 1rem; font-size: 1rem;
-    background: var(--btn-bg); color: white; border: none;
-    border-radius: 5px; cursor: pointer;
-}
-#logoutButton {
-  background: #f44336; /* red */
-}
-#loadingSpinner {
-  display: flex;
-  justify-content: center;
-  margin: 1em 0;
-}
-.spinner {
-  width: 24px;
-  height: 24px;
-  border: 4px solid #ccc;
-  border-top-color: var(--btn);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-.hidden { display: none !important; }
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-/* ── Lightbox Controls ─────────────────────────────────────────────────── */
-.lightbox-controls {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
+/* =========================
+   Base / layout
+   ========================= */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  background:var(--bg);
+  color:var(--fg);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  line-height:1.4;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* ── Note Panel ────────────────────────────────────────────────────────── */
-#notePanel {
+/* utility */
+.hidden{display:none!important}
+.center{display:flex;align-items:center;justify-content:center}
+.container{
+  max-width:var(--max-width);
+  margin:0 auto;
+  padding:16px;
+}
+
+/* offline banner */
+#offlineStatus{
+  position:fixed;
+  top:0;left:0;right:0;
+  background:#c2020c;
+  color:#fff;
+  text-align:center;
+  padding:0.5rem 0.75rem;
+  font-weight:600;
+  z-index:3000;
+  opacity:0;
+  transform:translateY(-6px);
+  transition:opacity .18s ease, transform .18s ease;
+}
+#offlineStatus.show{
+  opacity:1;
+  transform:none;
+}
+
+/* centered auth box (keeps previous layout) */
+.centered-box{
+  position:fixed; inset:0; background:rgba(0,0,0,0.65);
+  display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:1000;
+}
+.centered-box input, .centered-box button{
+  margin:0.4rem 0; padding:0.6rem; width:260px; font-size:1rem;
+  border-radius:8px; border:1px solid rgba(0,0,0,0.06);
+}
+.centered-box button{
+  background:var(--btn-bg); color:#fff; cursor:pointer; border:none;
+}
+
+/* small misc */
+.error{color:#d32f2f;font-size:.95rem;height:1.25rem;}
+
+/* =========================
+   Drop zone / actions
+   ========================= */
+#galleryContainer{padding:18px;}
+#dropZone{
+  border:2px dashed var(--drop-border);
+  background:var(--drop-bg);
+  padding:18px;
+  border-radius:12px;
+  text-align:center;
+  cursor:pointer;
+  margin-bottom:16px;
+  transition:transform .12s ease, background .12s ease, box-shadow .12s ease;
+}
+#dropZone:active{transform:translateY(1px)}
+#actions{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:center}
+
+/* buttons */
+button{
+  font-family:inherit;
+  border:0;
+  background:var(--btn-bg);
+  color:#fff;
+  padding:.55rem .9rem;
+  border-radius:8px;
+  cursor:pointer;
+  font-weight:600;
+  transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
+  box-shadow: var(--shadow);
+}
+button:hover{ transform: translateY(-1px); background:var(--btn-hover) }
+button:active{ transform: translateY(0) }
+button:disabled{ opacity:.6; cursor:not-allowed; transform:none; box-shadow:none }
+
+/* small variant used in markup; keeps compatibility */
+.load-more-btn, #loadMoreBtn {
+  display:inline-block;
+  margin:18px auto;
+  padding:10px 18px;
+  font-weight:700;
+  border-radius:8px;
+  background:var(--btn);
+  color:#fff;
+}
+
+/* logout button special */
+#logoutButton{ background:#f44336 }
+
+/* =========================
+   Gallery grid & items
+   ========================= */
+/* Responsive grid. min column width keeps items readable on small screens. */
+.gallery{
+  display:grid;
+  gap:var(--gap);
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  align-items:stretch;
+}
+
+/* each item keeps perfect square ratio using aspect-ratio when supported */
+.gallery-item{
+  position:relative;
+  background:var(--card-bg);
+  border-radius:10px;
+  overflow:hidden;
+  box-shadow:var(--shadow);
+  display:block;
+  isolation:isolate;
+  aspect-ratio: 1 / 1;
+  min-height: 100px; /* fallback */
+}
+
+/* image - fill container, preserve aspect ratio */
+.gallery-item img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+  user-select:none;
+  -webkit-user-drag:none;
+}
+
+/* skeleton overlay (same size as image) */
+.skeleton{
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  background:linear-gradient(90deg,#efefef 20%,#e6e6e6 50%,#efefef 80%);
+  background-size:200% 100%;
+  animation:shimmer 1.6s linear infinite;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton{ animation: none }
+  button:hover{ transform:none }
+}
+
+/* shimmer keyframes */
+@keyframes shimmer{
+  from { background-position:200% 0 }
+  to   { background-position:-200% 0 }
+}
+
+/* =========================
+   Lightbox overlay & controls
+   ========================= */
+#lightboxOverlay{
+  position:fixed; inset:0;
+  background:rgba(0,0,0,0.92);
+  display:flex; align-items:center; justify-content:center;
+  z-index:2000; padding:18px; gap:12px; flex-direction:column;
+}
+#lightboxOverlay.hidden{ display:none }
+#lightboxOverlay img{
+  max-width:92%;
+  max-height:82vh;
+  border-radius:12px;
+  box-shadow:0 8px 40px rgba(0,0,0,0.6);
+}
+
+/* top close button */
+#lightboxClose{
+  position:fixed; top:18px; right:20px; z-index:2100;
+  font-size:28px; color:#fff; background:transparent; border-radius:8px; padding:4px 8px; cursor:pointer;
+}
+#lightboxPrev, #lightboxNext{
+  position:fixed; top:50%; transform:translateY(-50%); z-index:2100;
+  font-size:20px; background:rgba(255,255,255,0.06); color:#fff;
+  border:none; padding:10px; border-radius:10px; cursor:pointer;
+  backdrop-filter: blur(4px);
+}
+#lightboxPrev{ left:18px }
+#lightboxNext{ right:18px }
+
+#lightboxDelete{
+  position:fixed; bottom:22px; right:22px; z-index:2100;
+  font-size:16px; background:rgba(255,82,82,0.9);
+  color:#fff; border:none; padding:10px 12px; cursor:pointer; border-radius:999px;
+  box-shadow:0 6px 18px rgba(0,0,0,0.35);
+}
+
+/* lightbox controls row */
+.lightbox-controls{ display:flex; gap:8px }
+
+/* =========================
+   Camera modal / cropper container
+   ========================= */
+#cameraModal{
+  position:fixed; inset:0; z-index:3000;
+  background:rgba(0,0,0,0.85);
+  display:flex; align-items:center; justify-content:center; padding:18px; overflow:auto;
+}
+#cameraModal video, #cameraModal #cropperContainer{
+  max-width:920px; width:100%; border-radius:10px; border:4px solid rgba(255,255,255,0.06);
+}
+#cameraModal img{ width:100%; height:auto; display:block; border-radius:8px }
+
+/* camera buttons */
+#cameraButtons{ margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap }
+
+/* =========================
+   Loading spinner (small)
+   ========================= */
+#loadingSpinner{ display:flex; justify-content:center; margin:12px 0 }
+.spinner{
+  width:24px; height:24px; border-radius:50%;
+  border:4px solid rgba(0,0,0,0.08);
+  border-top-color:var(--btn);
+  animation:spin .9s linear infinite;
+}
+@keyframes spin{ to { transform:rotate(360deg) } }
+
+/* =========================
+   Notes panel (compact & readable)
+   ========================= */
+#notePanel{
   background: #1f1d1d;
   color: #e8e3e3;
-  padding: 0.5rem;                    /* Less padding */
+  padding: 10px;
   width: 100%;
-  max-width: 480px;                   /* Narrower for mobile */
-  border-radius: 4px;                 /* Smaller rounded corners */
-  margin: 0.5rem auto 0 auto;         /* Less top margin */
-  box-shadow: 0 1px 4px rgba(0,0,0,0.15); /* Softer shadow */
-  box-sizing: border-box;
+  max-width:520px;
+  border-radius:8px;
+  margin:10px auto 0;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+  box-sizing:border-box;
+}
+#noteTextarea{
+  width:100%;
+  min-height:110px;
+  padding:10px;
+  font-size:1rem;
+  line-height:1.4;
+  border-radius:6px;
+  border:1px solid rgba(255,255,255,0.06);
+  background:#111;
+  color:#fff;
+  resize:vertical;
 }
 
+/* note actions */
+.noteActions{ display:flex; justify-content:flex-end; gap:8px; margin-top:8px }
+.noteActions button{ padding:.45rem .8rem; border-radius:6px; font-size:.95rem }
 
-#noteTextarea {
-  width: 100%;
-  min-height: 90px;
-  padding: 0.4rem 0.5rem;              /* Tight padding */
-  font-size: 1rem;                  /* font */
-  line-height: 1.35;
-  border: 1px solid #ccc;
-  border-radius: 3px;                  /* Subtle curve */
-  resize: vertical;
-  background: #1f1d1d;
-  color: #e8e3e3;
-  box-sizing: border-box;
+/* focus styles for accessibility */
+button:focus, a:focus, input:focus, textarea:focus{
+  outline:3px solid rgba(66,153,225,0.18);
+  outline-offset:3px;
+  border-radius:6px;
 }
 
-
-.noteActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
+/* =========================
+   Small responsive tweaks
+   ========================= */
+@media (min-width: 900px){
+  .gallery{ grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  :root{ --max-width:1200px; }
+}
+@media (max-width: 520px){
+  .centered-box input, .centered-box button{ width:86vw; max-width:320px }
+  #cameraModal{ padding:12px }
+  #notePanel{ max-width:92vw }
 }
 
-.noteActions button {
-  padding: 0.5rem 1rem;
-  font-size: 0.9rem;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  background: var(--btn-bg);
-  color: #fff;
+/* Respect print */
+@media print{
+  #lightboxOverlay, #cameraModal, #offlineStatus, .load-more-btn, button{ display:none !important }
 }
-
-.noteActions button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
