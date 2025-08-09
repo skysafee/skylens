@@ -1,4 +1,4 @@
-const CACHE_NAME = 'skylens-v6'; // bump this on every deploy
+const CACHE_NAME = 'AS082025091435'; // bump this on every deploy
 const URLS_TO_CACHE = [
   'index.html',         // root
   'style.css',
@@ -19,7 +19,7 @@ self.addEventListener('install', event => {
   );
 });
 
-// ✅ ACTIVATE: clean old caches and notify clients
+// ACTIVATE: clean old caches and notify clients
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
@@ -34,7 +34,7 @@ self.addEventListener('activate', event => {
   );
 });
 
-// 📦 FETCH: offline fallback for navigations, cache-first for others
+// FETCH: offline fallback for navigations, cache-first for others
 self.addEventListener('fetch', event => {
   if (event.request.mode === 'navigate') {
     // HTML pages (navigations) → try network, else offline.html
