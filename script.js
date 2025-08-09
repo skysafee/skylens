@@ -1,65 +1,82 @@
 // ==========================
 // 🔧 CONFIGURATION
-// ==========================
+// =========================
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzy3ZTT2YpSxJgGPHmPbqD1iR60zBzv_Vr52PR1s4cvWDvH6gW4P4_mOXpJocUhFHFjwQ/exec';
 const INITIAL_LOAD_COUNT = 4;
 const LOAD_MORE_COUNT = 20;
+
+// ==========================
+// ♻️ FRONTEND CACHE (sessionStorage)
+// =========================
+const PAGE_CACHE_PREFIX = 'sky_pages_v1_'; // key prefix for page caching in sessionStorage
+function getCachedPage(start, limit) {
+  try {
+    const key = PAGE_CACHE_PREFIX + start + '_' + limit;
+    const raw = sessionStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function setCachedPage(start, limit, payload) {
+  try {
+    const key = PAGE_CACHE_PREFIX + start + '_' + limit;
+    sessionStorage.setItem(key, JSON.stringify(payload));
+  } catch (e) { /* ignore */ }
+}
+function clearAllPageCache() {
+  try {
+    for (let k of Object.keys(sessionStorage)) {
+      if (k.startsWith(PAGE_CACHE_PREFIX)) sessionStorage.removeItem(k);
+    }
+  } catch (e) { /* ignore */ }
+}
+
+// ==========================
+// ⚙️ STATE & DOM REFS
+// =========================
 let HAS_MORE_IMAGES = true;
 let NEXT_START_INDEX = 0;
 let isSignupMode = false;
-// ── Note Feature Handlers ───────────────────────────────────────────────────
 
-// Cache DOM refs
 const noteBtn        = document.getElementById('lightboxNoteBtn');
 const notePanel      = document.getElementById('notePanel');
 const noteTextarea   = document.getElementById('noteTextarea');
 const editNoteBtn    = document.getElementById('editNoteBtn');
 const saveNoteBtn    = document.getElementById('saveNoteBtn');
 
-let currentNote = '';  // to store fetched note
+const authBox        = document.getElementById('authBox');
+const galleryContainer = document.getElementById('galleryContainer');
+const galleryEl      = document.getElementById('gallery');
+const loadMoreBtn    = document.getElementById('loadMoreBtn');
+const loadingSpinner = document.getElementById('loadingSpinner');
 
-// ==========================
-// 🌍 GLOBAL STATE
-// ==========================
 let CURRENT_USER = localStorage.getItem('skySafeeUser');
-let IMAGE_URLS = [];
-let CURRENT_INDEX = -1;
-let videoStream = null;
-let cropper = null;
-let cameraDevices = [];
-let currentCameraIndex = 0;
+let IMAGE_URLS = [];       // canonical array of urls (source of truth)
+let CURRENT_INDEX = -1;    // index into IMAGE_URLS for lightbox
 
 // ==========================
-// ✨ PWA Service Worker
-// ==========================
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('service-worker.js')
-      .then(() => console.log('ServiceWorker registered'))
-      .catch(err => console.error('ServiceWorker registration failed:', err));
-  });
+// 🧩 LAZY LOADING (IntersectionObserver)
+// =========================
+let io = null;
+function ensureObserver() {
+  if (io) return;
+  io = new IntersectionObserver(entries => {
+    for (const ent of entries) {
+      if (!ent.isIntersecting) continue;
+      const img = ent.target;
+      const src = img.dataset.src;
+      if (src) {
+        img.src = src;
+        img.removeAttribute('data-src');
+      }
+      io.unobserve(img);
+    }
+  }, { rootMargin: '200px', threshold: 0.01 });
 }
-navigator.serviceWorker?.addEventListener('message', event => {
-  if (event.data?.type === 'SKY_UPDATE') {
-    const banner = document.createElement('div');
-    banner.textContent = "SkyLens was updated!";
-    banner.style.position = 'fixed';
-    banner.style.bottom = '20px';
-    banner.style.left = '50%';
-    banner.style.transform = 'translateX(-50%)';
-    banner.style.background = '#4caf50';
-    banner.style.color = '#fff';
-    banner.style.padding = '0.8rem 1.2rem';
-    banner.style.borderRadius = '8px';
-    banner.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)';
-    banner.style.zIndex = '9999';
-    document.body.appendChild(banner);
-    setTimeout(() => banner.remove(), 8000);
-  }
-});
+
 // ==========================
 // 📞 API HELPER
-// ==========================
+// =========================
+let apiInFlight = false;
 async function callAppsScript(action, params = {}) {
   try {
     const token = localStorage.getItem('skySafeeToken');
@@ -81,31 +98,14 @@ async function callAppsScript(action, params = {}) {
 }
 
 // ==========================
-// 🎨 THEME LOGIC
-// ==========================
+// 🎨 THEME LOGIC (unchanged)
+// =========================
 const THEMES = {
   default: { bg: "#fff", fg: "#333", card: "#f9f9f9", btn: "#4caf50" },
   dark:    { bg: "#121212", fg: "#f0f0f0", card: "#1e1e1e", btn: "#2196f3" },
   ocean:   { bg: "#001f3f", fg: "#ffffff", card: "#003366", btn: "#00aced" },
   sunset:  { bg: "#2e1a47", fg: "#ffd1dc", card: "#5c2a9d", btn: "#ff5e5e" }
 };
-
-function updateOnlineStatus() {
-  const banner = document.getElementById('offlineStatus');
-  if (!banner) return;
-
-  if (!navigator.onLine) {
-    banner.textContent = "You're offline";
-    banner.classList.remove('hidden');
-  } else {
-    banner.textContent = "You're back online!";
-    banner.classList.remove('hidden');
-    setTimeout(() => banner.classList.add('hidden'), 3000);
-  }
-}
-window.addEventListener('online', updateOnlineStatus);
-window.addEventListener('offline', updateOnlineStatus);
-updateOnlineStatus();
 
 function applyTheme(theme) {
   Object.entries(theme).forEach(([k, v]) => {
@@ -115,21 +115,19 @@ function applyTheme(theme) {
 
 async function loadTheme() {
   const cachedTheme = localStorage.getItem('skySafeeTheme');
-  if (cachedTheme && THEMES[cachedTheme]) {
-    applyTheme(THEMES[cachedTheme]);
-  }
+  if (cachedTheme && THEMES[cachedTheme]) applyTheme(THEMES[cachedTheme]);
 
   const res = await callAppsScript('getTheme', { userId: CURRENT_USER });
   const themeName = res.success ? res.theme : 'default';
 
-  if (themeName !== cachedTheme) {
+  if (themeName && themeName !== cachedTheme) {
     localStorage.setItem('skySafeeTheme', themeName);
     applyTheme(THEMES[themeName] || THEMES.default);
   }
 
-  document.getElementById('themeSelect').value = themeName;
+  const select = document.getElementById('themeSelect');
+  if (select) select.value = themeName;
 }
-
 async function changeTheme(themeName) {
   applyTheme(THEMES[themeName]);
   localStorage.setItem('skySafeeTheme', themeName);
@@ -137,21 +135,17 @@ async function changeTheme(themeName) {
 }
 
 // ==========================
-// 🔐 AUTH LOGIC
-// ==========================
+// 🔐 AUTH LOGIC (unchanged mostly)
+// =========================
 function toggleMode(e) {
   e.preventDefault();
   isSignupMode = !isSignupMode;
-
   document.getElementById('authTitle').textContent = isSignupMode ? 'Create an Account' : 'Login to SkySafee';
   document.querySelector('#authBox button').textContent = isSignupMode ? 'Sign Up' : 'Login';
   document.getElementById('authConfirm').classList.toggle('hidden', !isSignupMode);
   document.getElementById('authError').textContent = '';
 }
-
-function showError(msg) {
-  document.getElementById('authError').textContent = msg;
-}
+function showError(msg) { document.getElementById('authError').textContent = msg; }
 
 async function handleAuth() {
   const uid = document.getElementById('authUser').value.trim();
@@ -161,12 +155,12 @@ async function handleAuth() {
   if (!uid || !pwd) return showError("Fill all fields.");
   if (isSignup && pwd !== document.getElementById('authConfirm').value) return showError("Passwords don't match.");
 
-  const action = isSignup ? 'createUser' : 'verifyLogin';
   const button = document.querySelector('#authBox button');
   button.disabled = true;
   const originalText = button.textContent;
   button.textContent = isSignup ? 'Signing up...' : 'Logging in...';
 
+  const action = isSignup ? 'createUser' : 'verifyLogin';
   const res = await callAppsScript(action, { userId: uid, password: pwd });
 
   button.disabled = false;
@@ -176,64 +170,24 @@ async function handleAuth() {
     CURRENT_USER = uid;
     localStorage.setItem('skySafeeUser', uid);
     localStorage.setItem('skySafeeToken', res.token);
-    document.getElementById('authBox').classList.add('hidden');
-    document.getElementById('galleryContainer').classList.remove('hidden');
+    authBox.classList.add('hidden');
+    galleryContainer.classList.remove('hidden');
+    clearAllPageCache(); // ensure no stale pages from previous user
     loadTheme();
-    loadImages(true);
+    await loadImages(true);
   } else {
     showError(res.message || 'Error');
   }
 }
+
 // ==========================
-// 🖼️ GALLERY & PAGINATION
-// ==========================
-async function loadImages(reset = false) {
-  if (!CURRENT_USER) return;
+// 🖼️ GALLERY: DOM helpers & event delegation
+// =========================
+ensureObserver();
 
-  const btn = document.getElementById('loadMoreBtn');
-  const spinner = document.getElementById('loadingSpinner');
-
-  if (reset) {
-    IMAGE_URLS = [];
-    NEXT_START_INDEX = 0;
-    HAS_MORE_IMAGES = true;
-
-    const gallery = document.getElementById('gallery');
-    while (gallery.firstChild) {
-      gallery.removeChild(gallery.firstChild);
-    }
-  }
-
-  if (!HAS_MORE_IMAGES) return;
-
-  if (btn) btn.classList.add('hidden');
-  if (spinner) spinner.classList.remove('hidden');
-
-  const res = await callAppsScript('getPaginatedImages', {
-    startIndex: NEXT_START_INDEX,
-    limit: reset ? INITIAL_LOAD_COUNT : LOAD_MORE_COUNT
-  });
-
-  if (res.success) {
-    const batch = res.urls || [];
-    batch.forEach(url => {
-      IMAGE_URLS.push(url);
-      addImageToDOM(url, IMAGE_URLS.length - 1);
-    });
-    NEXT_START_INDEX = res.nextStart || IMAGE_URLS.length;
-    HAS_MORE_IMAGES = res.hasMore;
-  } else {
-    alert("Failed to load images: " + res.message);
-  }
-
-  if (spinner) spinner.classList.add('hidden');
-  if (btn) btn.classList.toggle('hidden', !HAS_MORE_IMAGES);
-}
-
-function addImageToDOM(url, index) {
+function createGalleryItemNode(url) {
   const div = document.createElement('div');
   div.className = 'gallery-item';
-  div.dataset.index = index;
   div.dataset.url = url;
 
   const skeleton = document.createElement('div');
@@ -241,40 +195,150 @@ function addImageToDOM(url, index) {
   div.appendChild(skeleton);
 
   const img = document.createElement('img');
+  img.className = 'lazy';
+  img.alt = 'photo';
+  img.setAttribute('data-src', url);
   img.style.display = 'none';
   img.onload = () => {
     skeleton.remove();
     img.style.display = '';
   };
-  img.src = url;
-  img.onclick = () => openLightbox(index);
 
   div.appendChild(img);
-  document.getElementById('gallery').appendChild(div);
+  // observer will pick up the img and set src when in view
+  io.observe(img);
+
+  return div;
 }
 
+// Delegated click: open lightbox by url
+galleryEl.addEventListener('click', (e) => {
+  const item = e.target.closest('.gallery-item');
+  if (!item) return;
+  const url = item.dataset.url;
+  openLightboxByUrl(url);
+});
+
+// Add a batch of images (append)
+function appendImagesBatch(urls) {
+  if (!urls || !urls.length) return;
+  const frag = document.createDocumentFragment();
+  for (const url of urls) {
+    frag.appendChild(createGalleryItemNode(url));
+  }
+  galleryEl.appendChild(frag);
+}
+
+// Prepend single image (for upload) without re-rendering all
+function prependImage(url) {
+  IMAGE_URLS.unshift(url);
+  const node = createGalleryItemNode(url);
+  const first = galleryEl.firstChild;
+  if (first) galleryEl.insertBefore(node, first);
+  else galleryEl.appendChild(node);
+  // clear page cache because ordering changed server-side
+  clearAllPageCache();
+}
+
+// Remove image node by url
+function removeImageNodeByUrl(url) {
+  const node = galleryEl.querySelector(`.gallery-item[data-url="${cssEscape(url)}"]`);
+  if (node) node.remove();
+}
+
+// helper for querySelector when url has special chars
+function cssEscape(str) {
+  return str.replace(/([ #;?%&,.+*~\':"!^$[\]()=>|\/@])/g,'\\$1');
+}
+
+// ==========================
+// 🏎️ FAST PAGINATION + frontend caching
+// =========================
+let isLoadingImages = false;
+async function loadImages(reset = false) {
+  if (!CURRENT_USER) return;
+  if (isLoadingImages) return;
+
+  if (reset) {
+    IMAGE_URLS = [];
+    NEXT_START_INDEX = 0;
+    HAS_MORE_IMAGES = true;
+    // remove all children efficiently
+    while (galleryEl.lastChild) galleryEl.removeChild(galleryEl.lastChild);
+  }
+
+  if (!HAS_MORE_IMAGES) return;
+
+  isLoadingImages = true;
+  loadMoreBtn && loadMoreBtn.classList.add('hidden');
+  loadingSpinner && loadingSpinner.classList.remove('hidden');
+
+  const start = NEXT_START_INDEX;
+  const limit = reset ? INITIAL_LOAD_COUNT : LOAD_MORE_COUNT;
+
+  // try frontend cache first
+  const cached = getCachedPage(start, limit);
+  if (cached) {
+    IMAGE_URLS.push(...cached.urls);
+    appendImagesBatch(cached.urls);
+    NEXT_START_INDEX = cached.nextStart || IMAGE_URLS.length;
+    HAS_MORE_IMAGES = cached.hasMore;
+    isLoadingImages = false;
+    loadingSpinner && loadingSpinner.classList.add('hidden');
+    loadMoreBtn && loadMoreBtn.classList.toggle('hidden', !HAS_MORE_IMAGES);
+    return;
+  }
+
+  // call server
+  const res = await callAppsScript('getPaginatedImages', { startIndex: start, limit });
+  if (res.success) {
+    const batch = res.urls || [];
+    // update state and DOM in one pass
+    IMAGE_URLS.push(...batch);
+    appendImagesBatch(batch);
+
+    const nextStart = res.nextStart || IMAGE_URLS.length;
+    const hasMore = !!res.hasMore;
+
+    NEXT_START_INDEX = nextStart;
+    HAS_MORE_IMAGES = hasMore;
+
+    // cache page for session
+    setCachedPage(start, limit, { urls: batch, nextStart, hasMore });
+  } else {
+    alert("Failed to load images: " + res.message);
+  }
+
+  isLoadingImages = false;
+  loadingSpinner && loadingSpinner.classList.add('hidden');
+  loadMoreBtn && loadMoreBtn.classList.toggle('hidden', !HAS_MORE_IMAGES);
+}
+
+// attach load more
+loadMoreBtn && (loadMoreBtn.onclick = () => loadImages());
+
+// ==========================
+// 🖱 UPLOAD / DROP / CAMERA (faster UX, optimistic prepend)
+// =========================
 function processAndUpload(file) {
   if (!file.type.startsWith('image/')) return;
 
-  const reader = new FileReader();
-  const tempDiv = document.createElement('div');
-  tempDiv.className = 'gallery-item';
-  const skeleton = document.createElement('div');
-  skeleton.className = 'skeleton';
-  tempDiv.appendChild(skeleton);
-  document.getElementById('gallery').prepend(tempDiv);
+  // show optimistic skeleton at top
+  const tempNode = createGalleryItemNode(''); // empty data-src -> will be blank skeleton
+  galleryEl.insertBefore(tempNode, galleryEl.firstChild);
 
+  const reader = new FileReader();
   reader.onload = async () => {
     const dataUrl = reader.result;
-    const res = await callAppsScript('uploadToDrive', {
-      dataUrl,
-      filename: file.name
-    });
-    tempDiv.remove();
+    // disable multiple uploads concurrently? we still allow multiple but UX wise we can disable upload button if present
+    const res = await callAppsScript('uploadToDrive', { dataUrl, filename: file.name });
+
+    // remove temp node
+    tempNode.remove();
+
     if (res.success) {
-      IMAGE_URLS.unshift(res.url);
-      document.getElementById('gallery').innerHTML = '';
-      IMAGE_URLS.forEach((u, i) => addImageToDOM(u, i));
+      // prepend new node & update state without full re-render
+      prependImage(res.url);
     } else {
       alert('Upload failed: ' + res.message);
     }
@@ -282,74 +346,89 @@ function processAndUpload(file) {
   reader.readAsDataURL(file);
 }
 
-document.getElementById('imageInput').onchange = e => [...e.target.files].forEach(processAndUpload);
+const imageInput = document.getElementById('imageInput');
+imageInput && (imageInput.onchange = e => [...e.target.files].forEach(processAndUpload));
 
 const dropZone = document.getElementById('dropZone');
-dropZone.addEventListener('click', () => document.getElementById('imageInput').click());
-dropZone.addEventListener('dragover', e => {
-  e.preventDefault();
-  dropZone.style.background = "rgba(33,150,243,0.2)";
-});
-dropZone.addEventListener('dragleave', e => {
-  e.preventDefault();
-  dropZone.style.background = "var(--drop-bg)";
-});
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.style.background = "var(--drop-bg)";
-  [...e.dataTransfer.files].forEach(processAndUpload);
-});
+if (dropZone) {
+  dropZone.addEventListener('click', () => document.getElementById('imageInput').click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.background = "rgba(33,150,243,0.2)"; });
+  dropZone.addEventListener('dragleave', e => { e.preventDefault(); dropZone.style.background = "var(--drop-bg)"; });
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.style.background = "var(--drop-bg)";
+    [...e.dataTransfer.files].forEach(processAndUpload);
+  });
+}
 
 // ==========================
-// 💡 LIGHTBOX
-// ==========================
-function openLightbox(index) {
-  CURRENT_INDEX = index;
+// 💡 LIGHTBOX (open by url -> compute index)
+// =========================
+function openLightboxByUrl(url) {
+  const index = IMAGE_URLS.indexOf(url);
+  if (index === -1) {
+    // fallback: set image directly without changing IMAGE_URLS
+    document.getElementById('lightboxImage').src = url;
+    CURRENT_INDEX = -1;
+  } else {
+    CURRENT_INDEX = index;
+    document.getElementById('lightboxImage').src = IMAGE_URLS[index];
+  }
   notePanel.classList.add('hidden');
   noteTextarea.value = '';
   noteTextarea.readOnly = true;
   editNoteBtn.classList.add('hidden');
   saveNoteBtn.classList.add('hidden');
-  document.getElementById('lightboxImage').src = IMAGE_URLS[index];
   document.getElementById('lightboxOverlay').classList.remove('hidden');
 }
 
-function closeLightbox() {
-  document.getElementById('lightboxOverlay').classList.add('hidden');
-}
+function closeLightbox() { document.getElementById('lightboxOverlay').classList.add('hidden'); }
 
 function showNext() {
+  if (IMAGE_URLS.length === 0) return;
+  if (CURRENT_INDEX === -1) return;
   CURRENT_INDEX = (CURRENT_INDEX + 1) % IMAGE_URLS.length;
-  openLightbox(CURRENT_INDEX);
+  openLightboxByUrl(IMAGE_URLS[CURRENT_INDEX]);
 }
 
 function showPrev() {
+  if (IMAGE_URLS.length === 0) return;
+  if (CURRENT_INDEX === -1) return;
   CURRENT_INDEX = (CURRENT_INDEX - 1 + IMAGE_URLS.length) % IMAGE_URLS.length;
-  openLightbox(CURRENT_INDEX);
+  openLightboxByUrl(IMAGE_URLS[CURRENT_INDEX]);
 }
 
+// Delete image (optimistic UI + server call + cache clear)
 async function deleteCurrentImage() {
-  const url = IMAGE_URLS[CURRENT_INDEX];
+  const url = CURRENT_INDEX >= 0 ? IMAGE_URLS[CURRENT_INDEX] : document.getElementById('lightboxImage').src;
   if (!url || !confirm('Delete this image permanently?')) return;
 
-  const res = await callAppsScript('deleteImage', {
-    imageUrl: url
-  });
+  // optimistic remove UI first
+  removeImageNodeByUrl(url);
+  if (CURRENT_INDEX >= 0) IMAGE_URLS.splice(CURRENT_INDEX, 1);
+
+  // clear local page cache
+  clearAllPageCache();
+
+  const res = await callAppsScript('deleteImage', { imageUrl: url });
 
   if (res.success) {
-    document.querySelector(`.gallery-item[data-url="${url}"]`)?.remove();
-    IMAGE_URLS.splice(CURRENT_INDEX, 1);
+    // success — nothing else needed (already removed)
+  } else {
+    alert("Delete failed: " + res.message);
+    // ideally re-fetch the current page or re-add node — for simplicity, reload first page
+    await loadImages(true);
+  }
+
   notePanel.classList.add('hidden');
   noteTextarea.value = '';
   noteTextarea.readOnly = true;
   editNoteBtn.classList.add('hidden');
   saveNoteBtn.classList.add('hidden');
-    closeLightbox();
-  } else {
-    alert("Delete failed: " + res.message);
-  }
+  closeLightbox();
 }
 
+// bind lightbox controls
 document.getElementById('lightboxClose').onclick = closeLightbox;
 document.getElementById('lightboxNext').onclick = showNext;
 document.getElementById('lightboxPrev').onclick = showPrev;
@@ -360,9 +439,15 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowRight') showNext();
   if (e.key === 'ArrowLeft') showPrev();
 });
+
 // ==========================
-// 📷 CAMERA
-// ==========================
+// 📷 CAMERA (unchanged behaviour)
+// =========================
+let videoStream = null;
+let cropper = null;
+let cameraDevices = [];
+let currentCameraIndex = 0;
+
 async function openCamera() {
   document.getElementById('cameraModal').classList.remove('hidden');
   try {
@@ -378,7 +463,6 @@ async function openCamera() {
 
 function startCamera(deviceId) {
   if (videoStream) videoStream.getTracks().forEach(track => track.stop());
-
   navigator.mediaDevices.getUserMedia({
     video: { deviceId: deviceId ? { exact: deviceId } : undefined, facingMode: 'environment' }
   }).then(stream => {
@@ -435,42 +519,31 @@ function closeCamera() {
   document.getElementById('uploadButton').classList.add('hidden');
 }
 
-// Show/hide panel
+// ==========================
+// 📝 NOTES (unchanged behaviour; you can cache client-side later)
+// =========================
 noteBtn.onclick = async () => {
-  // Toggle panel visibility
   const isOpen = !notePanel.classList.contains('hidden');
-  if (isOpen) {
-    notePanel.classList.add('hidden');
-    return;
-  }
+  if (isOpen) { notePanel.classList.add('hidden'); return; }
   notePanel.classList.remove('hidden');
 
-  // Fetch existing note
-  const url = IMAGE_URLS[CURRENT_INDEX];
+  const url = CURRENT_INDEX >= 0 ? IMAGE_URLS[CURRENT_INDEX] : document.getElementById('lightboxImage').src;
   const res = await callAppsScript('getImageNote', { imageUrl: url });
-  if (res.success) {
-    currentNote = res.note || '';
-  } else {
-    currentNote = '';
-    console.warn('getImageNote error:', res.message);
-  }
+  if (res.success) currentNote = res.note || '';
+  else { currentNote = ''; console.warn('getImageNote error:', res.message); }
 
-  // Populate textarea & determine state
   noteTextarea.value = currentNote;
   if (currentNote) {
-    // Existing note: readonly + show Edit
     noteTextarea.readOnly = true;
     editNoteBtn.classList.remove('hidden');
     saveNoteBtn.classList.add('hidden');
   } else {
-    // No note: editable + show Save
     noteTextarea.readOnly = false;
     editNoteBtn.classList.add('hidden');
     saveNoteBtn.classList.remove('hidden');
   }
 };
 
-// Enable editing
 editNoteBtn.onclick = () => {
   noteTextarea.readOnly = false;
   editNoteBtn.classList.add('hidden');
@@ -478,31 +551,19 @@ editNoteBtn.onclick = () => {
   noteTextarea.focus();
 };
 
-// Save note
 saveNoteBtn.onclick = async () => {
-  const url = IMAGE_URLS[CURRENT_INDEX];
+  const url = CURRENT_INDEX >= 0 ? IMAGE_URLS[CURRENT_INDEX] : document.getElementById('lightboxImage').src;
   const newNote = noteTextarea.value.trim();
-
-  // Disable button while saving
   saveNoteBtn.disabled = true;
   saveNoteBtn.textContent = 'Saving…';
-
-  const res = await callAppsScript('saveImageNote', {
-    imageUrl: url,
-    note: newNote
-  });
-
-  // Restore button
+  const res = await callAppsScript('saveImageNote', { imageUrl: url, note: newNote });
   saveNoteBtn.disabled = false;
   saveNoteBtn.textContent = 'Save';
-
   if (res.success) {
     currentNote = newNote;
-    // Switch back to readonly and toggle buttons
     noteTextarea.readOnly = true;
     saveNoteBtn.classList.add('hidden');
     editNoteBtn.classList.remove('hidden');
-    // Quick feedback
     const toast = document.createElement('div');
     toast.textContent = '✓ Note saved';
     toast.style.position = 'fixed';
@@ -520,41 +581,32 @@ saveNoteBtn.onclick = async () => {
   }
 };
 
-
 // ==========================
 // 🚀 INIT
-// ==========================
-window.onload = () => {
+// =========================
+window.addEventListener('load', async () => {
   IMAGE_URLS = [];
-
   if (CURRENT_USER) {
-    document.getElementById('authBox').classList.add('hidden');
-    document.getElementById('galleryContainer').classList.remove('hidden');
-    loadTheme();
-    loadImages(true);
+    authBox.classList.add('hidden');
+    galleryContainer.classList.remove('hidden');
+    await loadTheme();
+    await loadImages(true);
   }
-};
+});
 
+// LOGOUT
 document.getElementById('logoutButton').onclick = async () => {
   const btn = document.getElementById('logoutButton');
-  const originalText = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Logging out...";
-
   try {
     const token = localStorage.getItem('skySafeeToken');
     if (token) await callAppsScript('logout', { token });
-  } catch (err) {
-    console.warn("Logout error:", err.message);
-  }
-
+  } catch (err) { console.warn("Logout error:", err.message); }
   localStorage.removeItem('skySafeeUser');
   localStorage.removeItem('skySafeeFolder');
   localStorage.removeItem('skySafeeToken');
   localStorage.removeItem('skySafeeTheme');
   sessionStorage.clear();
-
   setTimeout(() => location.reload(), 500);
 };
-
-document.getElementById('loadMoreBtn').onclick = () => loadImages();
