@@ -313,17 +313,21 @@ async function loadGallery(startIndex, limit) {
   }
 }
 
-function renderGallery(images, baseIndex = 0) {
+function renderGallery(images) {
   const container = document.getElementById('gallery');
   if (!container) return;
+  
+  const startIndex = IMAGE_URLS.length - images.length; // position in IMAGE_URLS
+
   images.forEach((img, idx) => {
     const div = document.createElement('div');
     div.className = 'gallery-item';
     div.innerHTML = `<img src="${img.url}" alt="Image" />`;
-    div.onclick = () => openLightbox(baseIndex + idx);
+    div.onclick = () => openLightbox(startIndex + idx);
     container.appendChild(div);
   });
 }
+
 
 // =========================
 // IMAGE UPLOAD
@@ -548,5 +552,6 @@ async function logoutUser() {
     location.reload();
   }
 }
+
 
 
