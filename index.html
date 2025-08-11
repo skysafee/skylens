@@ -48,7 +48,6 @@
   </div>
 
   <main class="page" role="main">
-    <!-- NOSCRIPT -->
     <noscript>
       <div style="margin:18px auto; max-width:900px; text-align:center; color:#ffdede; background:rgba(0,0,0,0.4); padding:10px; border-radius:8px;">
         SkyLens requires JavaScript. Please enable JavaScript to use the gallery.
@@ -91,7 +90,6 @@
 
     <!-- GALLERY -->
     <section id="gallerySection" class="gallery-wrap hidden" aria-live="polite">
-      <!-- SMALL top dropzone kept for legacy but not primary UX -->
       <div id="dropZone" class="dropzone hidden" aria-hidden="true">
         <div class="dropzone-inner">
           <input id="imageInput" type="file" accept="image/*" multiple class="hidden" />
@@ -99,7 +97,6 @@
         </div>
       </div>
 
-      <!-- Masonry-like grid -->
       <div id="gallery" class="gallery-grid" aria-live="polite" aria-label="Image gallery"></div>
 
       <div class="gallery-footer">
@@ -113,17 +110,38 @@
   <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" aria-label="Image viewer">
     <button class="lightbox-close icon-btn" onclick="closeLightbox()" aria-label="Close">✕</button>
     <button class="lightbox-nav prev" onclick="prevImage()" aria-label="Previous">‹</button>
+
     <div class="lightbox-content">
       <img id="lightboxImage" src="" alt="Full image" />
-      <div class="note-area">
-        <textarea id="imageNote" placeholder="Notes" aria-label="Image notes"></textarea>
-        <div class="note-actions">
-          <button id="saveNoteBtn" class="btn" type="button">Save</button>
-          <button id="deleteImageBtn" class="btn danger" type="button">Delete</button>
-        </div>
+      <!-- Note button replaces auto-loading of notes; Delete remains -->
+      <div class="lightbox-actions" style="display:flex; gap:10px; margin-top:10px;">
+        <button id="openNoteBtn" class="btn" type="button" aria-haspopup="dialog">Note</button>
+        <button id="deleteImageBtn" class="btn danger" type="button">Delete</button>
       </div>
     </div>
+
     <button class="lightbox-nav next" onclick="nextImage()" aria-label="Next">›</button>
+  </div>
+
+  <!-- NOTE MODAL (fetch on demand) -->
+  <div id="noteModal" class="modal hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Image note">
+    <div class="modal-inner" style="max-width:720px; width:94%; padding:18px; background:var(--card); border-radius:12px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px;">
+        <h3 id="noteModalTitle" style="margin:0; font-size:1.05rem;">Note</h3>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button id="noteCloseBtn" class="icon-btn" aria-label="Close note">✕</button>
+        </div>
+      </div>
+
+      <div id="noteView" style="white-space:pre-wrap; color:var(--text); min-height:80px; padding:10px; background:transparent; border-radius:8px; border:1px solid rgba(255,255,255,0.03);"></div>
+
+      <textarea id="noteTextarea" class="hidden" style="width:100%; min-height:120px; margin-top:8px; padding:10px; border-radius:8px; display:block; background:var(--surface); color:var(--text); border:1px solid rgba(255,255,255,0.03);"></textarea>
+
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+        <button id="noteEditBtn" class="btn" type="button">Edit</button>
+        <button id="noteSaveBtn" class="btn primary hidden" type="button">Save</button>
+      </div>
+    </div>
   </div>
 
   <!-- CAMERA MODAL -->
@@ -144,7 +162,6 @@
     </button>
 
     <div id="fabOptions" class="fab-options hidden" aria-hidden="true">
-      <!-- label opens file picker on click; has tabindex + role for accessibility -->
       <label for="imageInput" id="fabUploadLabel" class="fab-option" role="button" tabindex="0">Upload</label>
       <button id="openCameraBtn" class="fab-option" type="button">Camera</button>
     </div>
