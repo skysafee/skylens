@@ -1,4 +1,4 @@
-const CACHE_NAME = 'skylens-vas'; // bump this on every deploy
+const CACHE_NAME = 'AS082025112210'; // bump this on every deploy
 const URLS_TO_CACHE = [
   'index.html',         // root
   'style.css',
