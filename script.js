@@ -1,12 +1,12 @@
 // =========================
-// SkySafee - script.js (patched)
+// Skylens - script.js (patched)
 // =========================
 
 // =========================
 // CONFIG
 // =========================
-const SCRIPT_URL = 'AKfycbwsuhmmfT051Lb8AW2l_tPBBoizhuiLA4rjRbpzWalT7fjjw3DsKowKjcWffmYwrWaO';
-const INITIAL_LOAD_COUNT = 10;
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwsuhmmfT051Lb8AW2l_tPBBoizhuiLA4rjRbpzWalT7fjjw3DsKowKjcWffmYwrWaO/exec';
+const INITIAL_LOAD_COUNT = 4;
 
 // =========================
 // STATE
@@ -408,3 +408,4 @@ async function logoutUser() {
   SKYSAFE_TOKEN = null;
   location.reload();
 }
+
