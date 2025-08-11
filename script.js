@@ -23,11 +23,12 @@ let CURRENT_THEME = localStorage.getItem('theme') || 'default';
 async function callAppsScript(payload) {
   const res = await fetch(SCRIPT_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json;charset=utf-8' },
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // <- no preflight
     body: JSON.stringify(payload)
   });
   return res.json();
 }
+
 
 function showMessage(msg, type = 'info') {
   console.log(`[${type}] ${msg}`);
@@ -547,4 +548,5 @@ async function logoutUser() {
     location.reload();
   }
 }
+
 
