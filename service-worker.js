@@ -1,11 +1,9 @@
-const CACHE_NAME = 'skylens-v6'; // bump this on every deploy
+const CACHE_NAME = 'skylens-vas'; // bump this on every deploy
 const URLS_TO_CACHE = [
   'index.html',         // root
   'style.css',
   'script.js',
   'manifest.json',
-  'lenscrop.min.js',
-  'lensstyle.min.css',
   'offline.html'        // offline fallback
 ];
 
@@ -19,7 +17,7 @@ self.addEventListener('install', event => {
   );
 });
 
-// ✅ ACTIVATE: clean old caches and notify clients
+// ACTIVATE: clean old caches and notify clients
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
