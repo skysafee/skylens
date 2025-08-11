@@ -8,10 +8,9 @@
   <!-- Theme variables live in style.css -->
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Icons for older browsers -->
   <meta name="theme-color" content="#0f1724" />
 </head>
-<body class="theme-default">
+<body class="theme-default no-auth">
 
   <!-- TOP NAV -->
   <header class="topbar">
@@ -29,7 +28,6 @@
           <option value="sunset">Sunset</option>
         </select>
 
-        <!-- wired logout button -->
         <button id="logoutButton" class="control icon-btn" title="Logout" aria-label="Logout" onclick="logoutUser()">
           <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M16 13v-2H7V8l-5 4 5 4v-3zM20 3h-8v2h8v14h-8v2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
         </button>
@@ -39,6 +37,15 @@
 
   <!-- OFFLINE BANNER -->
   <div id="offlineStatus" class="offline-banner hidden">You're offline</div>
+
+  <!-- FULLSCREEN DROP OVERLAY (shows on drag anywhere) -->
+  <div id="fullDropOverlay" class="full-drop-overlay hidden" aria-hidden="true">
+    <div class="full-drop-inner">
+      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 10l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div class="drop-text-lg">Drop here to upload</div>
+      <div class="drop-sub">Release to upload files to SkyLens</div>
+    </div>
+  </div>
 
   <main class="page">
     <!-- AUTH / LOGIN CARD -->
@@ -68,7 +75,6 @@
           <div id="authError" class="form-error" aria-live="polite"></div>
 
           <div class="actions">
-            <!-- added id so JS can change the button text during toggle -->
             <button id="authSubmitBtn" type="submit" class="btn primary">Continue</button>
             <button id="signupToggleBtn" type="button" class="btn ghost">Create account</button>
           </div>
@@ -76,10 +82,10 @@
       </div>
     </section>
 
-    <!-- GALLERY (hidden when auth present) -->
+    <!-- GALLERY -->
     <section id="gallerySection" class="gallery-wrap hidden">
-      <!-- Upload / Dropzone -->
-      <div id="dropZone" class="dropzone">
+      <!-- SMALL top dropzone kept for legacy but not primary UX -->
+      <div id="dropZone" class="dropzone hidden">
         <div class="dropzone-inner">
           <input id="imageInput" type="file" accept="image/*" multiple class="hidden" />
           <div class="drop-text">Drag & drop images here or <button id="browseBtn" class="link">browse</button></div>
@@ -87,7 +93,7 @@
       </div>
 
       <!-- Masonry-like grid -->
-      <div id="gallery" class="gallery-grid" aria-live="polite"></div>
+      <div id="gallery" class="gallery-grid" aria-live="polite" aria-label="Image gallery"></div>
 
       <div class="gallery-footer">
         <button id="loadMoreBtn" class="btn outline hidden">Load more</button>
@@ -131,15 +137,13 @@
     </button>
 
     <div id="fabOptions" class="fab-options hidden">
-      <label for="imageInput" class="fab-option">Upload</label>
+      <label for="imageInput" id="fabUploadLabel" class="fab-option">Upload</label>
       <button id="openCameraBtn" class="fab-option" type="button">Camera</button>
     </div>
   </div>
 
-  <!-- small helpers -->
   <div id="toast" class="toast hidden" aria-live="polite"></div>
 
-  <!-- Scripts -->
   <script src="script.js" defer></script>
 </body>
 </html>
