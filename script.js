@@ -76,10 +76,6 @@ function enableUI() { setAllButtonsDisabled(false); }
 // =========================
 window.addEventListener('DOMContentLoaded', () => {
   bindUIElements();
-  // Ensure signupFields visibility matches state
-  const signupFields = document.getElementById('signupFields');
-  if (signupFields) signupFields.style.display = 'none';
-
   if (CURRENT_USER && SKYSAFE_TOKEN) {
     loadTheme().then(() => {
       loadGallery(0, INITIAL_LOAD_COUNT);
@@ -237,10 +233,11 @@ function toggleSignup() {
   const signupToggleBtn = document.getElementById('signupToggleBtn');
 
   if (authTitleEl) authTitleEl.textContent = isSignupMode ? 'Sign Up' : 'Login';
-  if (signupFields) signupFields.style.display = isSignupMode ? 'block' : 'none';
+  if (signupFields) signupFields.classList.toggle('hidden', !isSignupMode);
   if (authSubmitBtn) authSubmitBtn.textContent = isSignupMode ? 'Sign up' : 'Continue';
   if (signupToggleBtn) signupToggleBtn.textContent = isSignupMode ? 'Back to login' : 'Create account';
 }
+
 
 async function handleAuth() {
   const userId = document.getElementById('username').value.trim();
@@ -550,3 +547,4 @@ async function logoutUser() {
     location.reload();
   }
 }
+
