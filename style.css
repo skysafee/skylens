@@ -117,7 +117,16 @@ html,body { height:100%; margin:0; font-family: Inter, ui-sans-serif, system-ui,
 .btn.ghost { background:transparent; border:1px solid rgba(255,255,255,0.04); color:var(--muted); }
 .btn.outline { background:transparent; border:1px dashed rgba(255,255,255,0.04); color:var(--muted); }
 .btn.danger { background: linear-gradient(90deg, var(--danger), #ff2d2d); color:#fff; }
-
+/* disabled state (visual) */
+button.disabled,
+.icon-btn.disabled,
+.fab-option.disabled,
+.control.disabled {
+  opacity: 0.6 !important;
+  pointer-events: none !important;
+  cursor: not-allowed !important;
+  filter: grayscale(10%);
+}
 /* ---------- Gallery / dropzone ---------- */
 .gallery-wrap { margin-top: 6px; }
 .dropzone {
@@ -211,3 +220,4 @@ html,body { height:100%; margin:0; font-family: Inter, ui-sans-serif, system-ui,
   .top-right .control { display:none; }
   .note-area textarea { min-height: 44px; }
 }
+
