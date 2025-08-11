@@ -190,8 +190,20 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .lightbox .lightbox-close:focus-visible { outline: 3px solid rgba(255,255,255,0.08); outline-offset: 3px; border-radius: 8px; }
 .lightbox-content { max-width: 100%; width: 100%; max-height: 90vh; display:flex; flex-direction:column; align-items:center; gap:12px; }
 .lightbox-content img { width: 100%; max-width: 920px; max-height: 60vh; border-radius: 12px; box-shadow: 0 12px 40px rgba(2,6,23,0.7); object-fit: contain; }
-.note-area { width: 100%; margin-top: 8px; display:flex; gap: 12px; align-items:flex-end; }
-.note-area textarea { width: 100%; min-height: 64px; padding: 10px; border-radius: 8px; background: var(--surface); border: 1px solid rgba(255,255,255,0.03); color: var(--text); resize: vertical; }
+/* ---------- Note modal small polish (optional) ---------- */
+#noteModal .modal-inner { background: var(--card); border: 1px solid rgba(255,255,255,0.03); box-shadow: 0 12px 40px rgba(0,0,0,0.6); }
+#noteModal #noteView { padding: 12px; min-height: 88px; white-space: pre-wrap; font-size: 0.95rem; color: var(--text); }
+#noteModal #noteTextarea { font-size: 0.95rem; }
+#noteModal .icon-btn { padding: 8px; border-radius: 8px; }
+#noteModal .btn { min-width: 88px; }
+
+/* small inline loading spinner for note modal (hidden by default) */
+#noteModal .note-spinner { width:18px; height:18px; border-radius:50%; border:2px solid rgba(255,255,255,0.06); border-top-color:var(--accent); animation: spin .9s linear infinite; display:inline-block; vertical-align:middle; margin-left:8px; }
+#noteModal .note-spinner.hidden { display:none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* subtle "read-only" background for the view block */
+#noteModal #noteView[aria-empty="true"] { opacity: 0.8; color: var(--muted); font-style: italic; }
 
 /* nav buttons */
 .lightbox-nav { background: transparent; border: none; color: var(--text); font-size: 34px; padding: 10px; cursor: pointer; }
@@ -234,3 +246,4 @@ button, .fab, .fab-option, .icon-btn { user-select: none; -webkit-user-select: n
 .center { display:flex; align-items:center; justify-content:center; }
 
 /* end of stylesheet */
+
