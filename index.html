@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SkyLens</title>
+
+  <!-- Theme variables live in style.css -->
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Icons for older browsers -->
+  <meta name="theme-color" content="#0f1724" />
+</head>
+<body class="theme-default">
+
+  <!-- TOP NAV -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2L2 7v6c0 5 6 9 10 9s10-4 10-9V7L12 2z"/></svg>
+        <span class="app-name">SkyLens</span>
+      </div>
+
+      <div class="top-right">
+        <select id="themeSelect" class="control theme-select" aria-label="Select theme">
+          <option value="default">Default</option>
+          <option value="dark">Dark</option>
+          <option value="ocean">Ocean</option>
+          <option value="sunset">Sunset</option>
+        </select>
+
+        <button id="logoutButton" class="control icon-btn" title="Logout" aria-label="Logout">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M16 13v-2H7V8l-5 4 5 4v-3zM20 3h-8v2h8v14h-8v2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- OFFLINE BANNER -->
+  <div id="offlineStatus" class="offline-banner hidden">You're offline</div>
+
+  <main class="page">
+    <!-- AUTH / LOGIN CARD -->
+    <section id="authSection" class="auth-wrap center-card">
+      <div class="auth-card">
+        <h1 id="authTitle">Login to Skylens</h1>
+
+        <form id="loginForm" class="form">
+          <div class="field">
+            <label for="username" class="visually-hidden">Username</label>
+            <input id="username" name="username" type="text" placeholder="Username" autocomplete="username" required />
+          </div>
+
+          <div class="field">
+            <label for="password" class="visually-hidden">Password</label>
+            <input id="password" name="password" type="password" placeholder="Password" autocomplete="current-password" required />
+          </div>
+
+          <div id="signupFields" class="hidden">
+            <div class="field">
+              <label for="confirmPassword" class="visually-hidden">Confirm password</label>
+              <input id="confirmPassword" type="password" placeholder="Confirm password" autocomplete="new-password" />
+            </div>
+          </div>
+
+          <div id="authError" class="form-error" aria-live="polite"></div>
+
+          <div class="actions">
+            <button type="submit" class="btn primary">Continue</button>
+            <button id="signupToggleBtn" type="button" class="btn ghost">Create account</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- GALLERY (hidden when auth present) -->
+    <section id="gallerySection" class="gallery-wrap hidden">
+      <!-- Upload / Dropzone -->
+      <div id="dropZone" class="dropzone">
+        <div class="dropzone-inner">
+          <input id="imageInput" type="file" accept="image/*" multiple class="hidden" />
+          <div class="drop-text">Drag & drop images here or <button id="browseBtn" class="link">browse</button></div>
+        </div>
+      </div>
+
+      <!-- Masonry-like grid -->
+      <div id="gallery" class="gallery-grid" aria-live="polite"></div>
+
+      <div class="gallery-footer">
+        <button id="loadMoreBtn" class="btn outline hidden">Load more</button>
+        <div id="loadingSpinner" class="spinner hidden" aria-hidden="true"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- LIGHTBOX / VIEWER -->
+  <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true">
+    <button class="lightbox-close icon-btn" onclick="closeLightbox()" aria-label="Close">✕</button>
+    <button class="lightbox-nav prev" onclick="prevImage()" aria-label="<<">‹</button>
+    <div class="lightbox-content">
+      <img id="lightboxImage" src="" alt="Full image" />
+      <div class="note-area">
+        <textarea id="imageNote" placeholder="Notes"></textarea>
+        <div class="note-actions">
+          <button id="saveNoteBtn" class="btn" type="button">Save</button>
+          <button id="deleteImageBtn" class="btn danger" type="button">Delete</button>
+        </div>
+      </div>
+    </div>
+    <button class="lightbox-nav next" onclick="nextImage()" aria-label=">>">›</button>
+  </div>
+
+  <!-- CAMERA MODAL -->
+  <div id="cameraModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-inner">
+      <video id="cameraPreview" autoplay playsinline></video>
+      <div class="camera-actions">
+        <button id="captureBtn" class="btn">Capture</button>
+        <button id="closeCameraBtn" class="btn ghost">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOATING ACTION BUTTON -->
+  <div class="fab-wrap">
+    <button id="fabOpen" class="fab" title="Upload / Camera" aria-label="Upload or capture">
+      <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 5v14m7-7H5"/></svg>
+    </button>
+
+    <div id="fabOptions" class="fab-options hidden">
+      <label for="imageInput" class="fab-option">Upload</label>
+      <button id="openCameraBtn" class="fab-option" type="button">Camera</button>
+    </div>
+  </div>
+
+  <!-- small helpers -->
+  <div id="toast" class="toast hidden" aria-live="polite"></div>
+
+  <!-- Scripts -->
+  <script src="script.js" defer></script>
+</body>
+</html>
