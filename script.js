@@ -1,5 +1,5 @@
 // =========================
-// Skylens - script.js (patched & optimized)
+// Skylens - script.js (notes-on-demand)
 // =========================
 
 /* CONFIG */
@@ -15,17 +15,13 @@ let CURRENT_INDEX = -1;
 let CURRENT_THEME = localStorage.getItem('theme') || 'default';
 let NEXT_START = 0;
 let HAS_MORE = true;
+const SEEN_FILEIDS = new Set(); // avoid duplicate render
 
-// keep set of seen fileIds to avoid duplicates from server responses
-const SEEN_FILEIDS = new Set();
+/* LOADING FLAGS */
+const loading = { gallery:false, upload:false, note:false, delete:false };
 
-/* PER-OP LOADING FLAGS (avoid overlapping requests) */
-const loading = {
-  gallery: false,
-  upload: false,
-  note: false,
-  delete: false
-};
+/* NOTE LOADING MAP */
+const noteLoading = {}; // map fileId -> boolean
 
 /* HELPERS */
 function toast(msg, timeout = 2200) {
@@ -60,21 +56,16 @@ async function callAppsScript(payload) {
       body: JSON.stringify(payload)
     });
 
-    // Read as text (safer for non-json responses)
     const text = await res.text();
     if (!text) throw new Error('Empty response from server');
 
     let data;
-    try {
-      data = JSON.parse(text);
-    } catch (err) {
+    try { data = JSON.parse(text); } catch (err) {
       console.error('API returned non-JSON:', text);
       throw new Error('Invalid response from server');
     }
 
-    // Central auth failure detection
     if (data && data.success === false && /unauthoriz/i.test(String(data.message || ''))) {
-      // do a local logout (avoid calling API again)
       forceLogoutLocal('Session expired — please sign in again');
       throw new Error('Unauthorized');
     }
@@ -82,7 +73,6 @@ async function callAppsScript(payload) {
     return data;
   } catch (err) {
     console.error('callAppsScript error', err);
-    // Typical network/cors error shows as TypeError: Failed to fetch
     if (err instanceof TypeError || /failed to fetch/i.test(String(err.message))) {
       throw new Error('Network error or CORS blocked. Check your Apps Script deployment (Anyone, even anonymous).');
     }
@@ -109,7 +99,7 @@ function setAllButtonsDisabled(disabled) {
         el.style.opacity = '';
         el.style.cursor = '';
       }
-    } catch (e) { /* ignore node issues */ }
+    } catch (e) {}
   });
 }
 function disableUI() { setAllButtonsDisabled(true); }
@@ -124,9 +114,7 @@ function initObserver() {
         if (entry.isIntersecting) {
           const img = entry.target;
           const src = img.dataset.src;
-          if (src) {
-            img.src = src;
-          }
+          if (src) img.src = src;
           imgObserver.unobserve(img);
         }
       });
@@ -149,9 +137,14 @@ function bindUI() {
   const openCameraBtn = document.getElementById('openCameraBtn');
   const captureBtn = document.getElementById('captureBtn');
   const closeCameraBtn = document.getElementById('closeCameraBtn');
-  const saveNoteBtn = document.getElementById('saveNoteBtn');
   const deleteImageBtn = document.getElementById('deleteImageBtn');
   const logoutBtn = document.getElementById('logoutButton');
+
+  // Note modal controls
+  const openNoteBtn = document.getElementById('openNoteBtn');
+  const noteCloseBtn = document.getElementById('noteCloseBtn');
+  const noteEditBtn = document.getElementById('noteEditBtn');
+  const noteSaveBtn = document.getElementById('noteSaveBtn');
 
   if (loginForm) loginForm.addEventListener('submit', e => { e.preventDefault(); handleAuth(); });
   if (signupToggleBtn) signupToggleBtn.addEventListener('click', toggleSignup);
@@ -163,9 +156,19 @@ function bindUI() {
   if (openCameraBtn) openCameraBtn.addEventListener('click', () => { startCamera(); document.getElementById('cameraModal')?.classList.remove('hidden'); });
   if (captureBtn) captureBtn.addEventListener('click', () => capturePhoto());
   if (closeCameraBtn) closeCameraBtn.addEventListener('click', () => { stopCamera(); document.getElementById('cameraModal')?.classList.add('hidden'); });
-  if (saveNoteBtn) saveNoteBtn.addEventListener('click', () => { const img = IMAGE_URLS[CURRENT_INDEX]; if (img && img.fileId) saveNoteForImage(img.fileId); });
   if (deleteImageBtn) deleteImageBtn.addEventListener('click', deleteCurrentImage);
   if (logoutBtn) logoutBtn.addEventListener('click', logoutUser);
+
+  if (openNoteBtn) openNoteBtn.addEventListener('click', () => {
+    const img = IMAGE_URLS[CURRENT_INDEX];
+    if (img && img.fileId) openNoteModal(img.fileId);
+  });
+  if (noteCloseBtn) noteCloseBtn.addEventListener('click', closeNoteModal);
+  if (noteEditBtn) noteEditBtn.addEventListener('click', toggleNoteEdit);
+  if (noteSaveBtn) noteSaveBtn.addEventListener('click', async () => {
+    const img = IMAGE_URLS[CURRENT_INDEX];
+    if (img && img.fileId) await saveNoteFromModal(img.fileId);
+  });
 
   // keyboard navigation for lightbox
   document.addEventListener('keydown', (e) => {
@@ -177,22 +180,16 @@ function bindUI() {
   });
 }
 
-/* TOPBAR VISIBILITY (hide controls pre-login) */
+/* TOPBAR VISIBILITY */
 function updateTopbar() {
-  if (!CURRENT_USER) {
-    document.body.classList.add('no-auth');
-  } else {
-    document.body.classList.remove('no-auth');
-  }
+  if (!CURRENT_USER) document.body.classList.add('no-auth'); else document.body.classList.remove('no-auth');
 }
 
 /* THEME */
 async function loadTheme() {
   if (!CURRENT_USER) { applyTheme(CURRENT_THEME); return; }
-  if (loading.theme) return;
   try {
     disableUI();
-    // Keep compatibility: backend expects userId
     const res = await callAppsScript({ action: 'getTheme', userId: CURRENT_USER });
     CURRENT_THEME = (res && res.theme) ? res.theme : 'default';
     localStorage.setItem('theme', CURRENT_THEME);
@@ -208,7 +205,6 @@ function applyTheme(name) {
   if (!CURRENT_USER) document.body.classList.add('no-auth');
 }
 async function saveTheme(theme) {
-  // Compatibility: send userId as backend expects
   if (!CURRENT_USER) { localStorage.setItem('theme', theme); applyTheme(theme); return; }
   try {
     disableUI();
@@ -256,7 +252,6 @@ async function handleAuth() {
       updateTopbar();
       document.getElementById('authSection')?.classList.add('hidden');
       document.getElementById('gallerySection')?.classList.remove('hidden');
-      // Reset gallery state
       IMAGE_URLS = [];
       SEEN_FILEIDS.clear();
       document.getElementById('gallery')?.replaceChildren();
@@ -284,7 +279,6 @@ function makeSkeletonItem() {
 }
 
 function createGalleryItem(obj) {
-  // obj: { date, url, fileId, note }
   const div = document.createElement('div');
   div.className = 'gallery-item';
   if (obj.fileId) div.dataset.fileid = obj.fileId;
@@ -321,11 +315,9 @@ function createGalleryItem(obj) {
 
   div.appendChild(img);
 
-  // lazy-load
   if (imgObserver) imgObserver.observe(img);
   else img.src = img.dataset.src;
 
-  // open lightbox by fileId (safer than relying on indexes which may shift)
   div.addEventListener('click', () => {
     const fid = div.dataset.fileid;
     if (fid) openLightboxByFileId(fid);
@@ -352,32 +344,24 @@ async function loadGallery(start = 0, limit = INITIAL_LOAD_COUNT) {
     }
 
     const images = Array.isArray(res.images) ? res.images : [];
-    // Filter out images we have already (avoid duplicates)
     const newImages = images.filter(img => {
       const fid = String(img.fileId || '');
-      if (!fid) return true; // keep if no ID (rare)
+      if (!fid) return true;
       if (SEEN_FILEIDS.has(fid)) return false;
       SEEN_FILEIDS.add(fid);
       return true;
     });
 
-    // add to state
     const baseIndex = IMAGE_URLS.length;
     IMAGE_URLS = IMAGE_URLS.concat(newImages);
 
-    // render using DocumentFragment (faster)
     const container = document.getElementById('gallery');
     if (container && newImages.length) {
       const frag = document.createDocumentFragment();
-      newImages.forEach((imgObj) => {
-        const el = createGalleryItem(imgObj);
-        frag.appendChild(el);
-      });
-      // append to end (newest-first already from server -> but we reversed in backend; keep server contract)
+      newImages.forEach(imgObj => frag.appendChild(createGalleryItem(imgObj)));
       container.appendChild(frag);
     }
 
-    // pagination bookkeeping: prefer server-sent nextStart/hasMore
     if (typeof res.nextStart !== 'undefined') {
       NEXT_START = res.nextStart;
       HAS_MORE = !!res.hasMore;
@@ -408,10 +392,8 @@ async function uploadImage(file) {
   if (!allowed.includes(file.type)) { toast('Unsupported file type'); return; }
   if (file.size > max) { toast('File too large (max 5MB)'); return; }
 
-  // optimistic skeleton at top
   const container = document.getElementById('gallery');
   const placeholder = makeSkeletonItem();
-  // show placeholder at top
   if (container) container.insertBefore(placeholder, container.firstChild);
 
   const reader = new FileReader();
@@ -423,24 +405,13 @@ async function uploadImage(file) {
       const res = await callAppsScript({ action: 'uploadToDrive', dataUrl, filename: file.name, token: SKYSAFE_TOKEN });
       if (res && res.success) {
         placeholder.remove();
-
-        // Optimistically insert new item locally (backend returns url & fileId)
-        const newImage = {
-          date: (new Date()).toISOString ? new Date().toISOString() : (new Date()).toString(),
-          url: res.url || '',
-          fileId: res.fileId || '',
-          note: ''
-        };
-
-        // avoid duplicates
+        const newImage = { date: (new Date()).toISOString(), url: res.url || '', fileId: res.fileId || '', note: '' };
         if (newImage.fileId && !SEEN_FILEIDS.has(newImage.fileId)) {
           SEEN_FILEIDS.add(newImage.fileId);
           IMAGE_URLS.unshift(newImage);
-          // prepend DOM item
           const el = createGalleryItem(newImage);
           container.insertBefore(el, container.firstChild);
         } else {
-          // fallback: refresh first page
           IMAGE_URLS = [];
           SEEN_FILEIDS.clear();
           document.getElementById('gallery').innerHTML = '';
@@ -448,7 +419,6 @@ async function uploadImage(file) {
           HAS_MORE = true;
           await loadGallery(0, INITIAL_LOAD_COUNT);
         }
-
         toast('Upload successful');
       } else {
         placeholder.remove();
@@ -474,20 +444,15 @@ function openLightbox(index) {
   if (!lb) return;
   lb.classList.remove('hidden');
   updateLightboxImage();
-  const img = IMAGE_URLS[CURRENT_INDEX];
-  if (img && img.fileId) loadNoteForImage(img.fileId);
+  // Note: do NOT auto-load notes here (on-demand only)
 }
 function openLightboxByFileId(fileId) {
-  // find index in IMAGE_URLS
   const idx = IMAGE_URLS.findIndex(i => String(i.fileId || '') === String(fileId || ''));
   if (idx === -1) {
-    // not found locally — as fallback, refresh first page
-    // set minimal reload: reset and load first page
     IMAGE_URLS = [];
     SEEN_FILEIDS.clear();
     document.getElementById('gallery').innerHTML = '';
-    NEXT_START = 0;
-    HAS_MORE = true;
+    NEXT_START = 0; HAS_MORE = true;
     loadGallery(0, INITIAL_LOAD_COUNT).then(() => {
       const newIdx = IMAGE_URLS.findIndex(i => String(i.fileId || '') === String(fileId || ''));
       if (newIdx !== -1) openLightbox(newIdx);
@@ -496,9 +461,7 @@ function openLightboxByFileId(fileId) {
   }
   openLightbox(idx);
 }
-function closeLightbox() {
-  document.getElementById('lightbox')?.classList.add('hidden');
-}
+function closeLightbox() { document.getElementById('lightbox')?.classList.add('hidden'); }
 function updateLightboxImage() {
   const obj = IMAGE_URLS[CURRENT_INDEX];
   if (!obj) return;
@@ -509,16 +472,12 @@ function nextImage() {
   if (CURRENT_INDEX < IMAGE_URLS.length - 1) {
     CURRENT_INDEX++;
     updateLightboxImage();
-    const i = IMAGE_URLS[CURRENT_INDEX];
-    if (i && i.fileId) loadNoteForImage(i.fileId);
   }
 }
 function prevImage() {
   if (CURRENT_INDEX > 0) {
     CURRENT_INDEX--;
     updateLightboxImage();
-    const i = IMAGE_URLS[CURRENT_INDEX];
-    if (i && i.fileId) loadNoteForImage(i.fileId);
   }
 }
 
@@ -533,17 +492,13 @@ async function deleteCurrentImage() {
     disableUI();
     const res = await callAppsScript({ action: 'deleteImage', fileId: item.fileId, token: SKYSAFE_TOKEN });
     if (res && res.success) {
-      // Remove from local state and DOM without full reload
       const fid = String(item.fileId);
-      // remove from IMAGE_URLS
       const idx = IMAGE_URLS.findIndex(i => String(i.fileId) === fid);
       if (idx !== -1) IMAGE_URLS.splice(idx, 1);
-      // remove from DOM
       const el = document.querySelector(`.gallery-item[data-fileid="${fid}"]`);
       if (el && el.parentNode) el.parentNode.removeChild(el);
       SEEN_FILEIDS.delete(fid);
       toast('Image deleted');
-      // adjust CURRENT_INDEX
       CURRENT_INDEX = Math.max(0, Math.min(CURRENT_INDEX, IMAGE_URLS.length - 1));
       closeLightbox();
     } else {
@@ -558,62 +513,168 @@ async function deleteCurrentImage() {
   }
 }
 
-/* NOTES */
-async function loadNoteForImage(fileId) {
+/* NOTES: On-demand modal workflow */
+
+// Open note modal for a fileId; fetch note only when opening
+async function openNoteModal(fileId) {
   if (!fileId || !CURRENT_USER || !SKYSAFE_TOKEN) return;
-  if (loading.note) return;
-  loading.note = true;
+  const modal = document.getElementById('noteModal');
+  const noteView = document.getElementById('noteView');
+  const noteTextarea = document.getElementById('noteTextarea');
+  const editBtn = document.getElementById('noteEditBtn');
+  const saveBtn = document.getElementById('noteSaveBtn');
+
+  // Ensure modal visible
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden', 'false');
+
+  // Clear UI / set loading hint
+  noteView.textContent = 'Loading…';
+  noteView.classList.remove('hidden');
+  noteTextarea.classList.add('hidden');
+  editBtn.textContent = 'Edit';
+  saveBtn.classList.add('hidden');
+
+  // Prevent duplicate identical requests
+  if (noteLoading[fileId]) {
+    // Still wait until it's available in local IMAGE_URLS (if the fetch is in progress)
+    const waitUntil = Date.now() + 5000; // small timeout as fallback
+    const poll = () => {
+      const idx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fileId));
+      if (idx !== -1 && typeof IMAGE_URLS[idx].note !== 'undefined') {
+        noteView.textContent = IMAGE_URLS[idx].note || '';
+        return;
+      }
+      if (Date.now() > waitUntil) {
+        noteView.textContent = '';
+        return;
+      }
+      setTimeout(poll, 150);
+    };
+    poll();
+    return;
+  }
+
+  // If we already have note locally, show it
+  const idx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fileId));
+  if (idx !== -1 && typeof IMAGE_URLS[idx].note !== 'undefined') {
+    noteView.textContent = IMAGE_URLS[idx].note || '';
+    // focus edit button for keyboard users
+    setTimeout(() => editBtn?.focus(), 50);
+    return;
+  }
+
+  // Otherwise fetch from backend
+  noteLoading[fileId] = true;
   try {
     disableUI();
     const res = await callAppsScript({ action: 'getImageNote', fileId, token: SKYSAFE_TOKEN });
     if (res && res.success) {
-      document.getElementById('imageNote').value = res.note || '';
-      // Update local cache
-      const idx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fileId));
-      if (idx !== -1) IMAGE_URLS[idx].note = res.note || '';
+      const txt = res.note || '';
+      noteView.textContent = txt;
+      if (idx !== -1) IMAGE_URLS[idx].note = txt;
     } else {
-      document.getElementById('imageNote').value = '';
+      noteView.textContent = '';
+      if (idx !== -1) IMAGE_URLS[idx].note = '';
     }
+    setTimeout(() => editBtn?.focus(), 50);
   } catch (e) {
-    console.error('loadNoteForImage', e);
+    console.error('openNoteModal', e);
+    noteView.textContent = '';
+    toast(e.message || 'Failed to load note');
   } finally {
-    loading.note = false;
+    noteLoading[fileId] = false;
     enableUI();
   }
 }
-async function saveNoteForImage(fileId) {
+
+// Close note modal
+function closeNoteModal() {
+  const modal = document.getElementById('noteModal');
+  modal.classList.add('hidden');
+  modal.setAttribute('aria-hidden', 'true');
+  // reset editing UI
+  const noteView = document.getElementById('noteView');
+  const noteTextarea = document.getElementById('noteTextarea');
+  const editBtn = document.getElementById('noteEditBtn');
+  const saveBtn = document.getElementById('noteSaveBtn');
+  if (noteView) noteView.classList.remove('hidden');
+  if (noteTextarea) noteTextarea.classList.add('hidden');
+  if (editBtn) editBtn.textContent = 'Edit';
+  if (saveBtn) saveBtn.classList.add('hidden');
+}
+
+// Toggle edit mode inside note modal
+function toggleNoteEdit() {
+  const noteView = document.getElementById('noteView');
+  const noteTextarea = document.getElementById('noteTextarea');
+  const editBtn = document.getElementById('noteEditBtn');
+  const saveBtn = document.getElementById('noteSaveBtn');
+
+  // if currently in edit mode (Edit button shows 'Cancel'), then cancel
+  if (editBtn.textContent === 'Cancel') {
+    // cancel edits, revert to read-only view
+    noteTextarea.classList.add('hidden');
+    noteView.classList.remove('hidden');
+    editBtn.textContent = 'Edit';
+    saveBtn.classList.add('hidden');
+    return;
+  }
+
+  // Enter edit mode
+  const idx = IMAGE_URLS.findIndex(i => i && String(i.fileId) === String(IMAGE_URLS[CURRENT_INDEX]?.fileId));
+  const currFileId = IMAGE_URLS[CURRENT_INDEX] && IMAGE_URLS[CURRENT_INDEX].fileId;
+  let currentNote = '';
+  if (idx !== -1 && typeof IMAGE_URLS[idx].note !== 'undefined') currentNote = IMAGE_URLS[idx].note || '';
+  // populate textarea with current note
+  noteTextarea.value = currentNote;
+  noteView.classList.add('hidden');
+  noteTextarea.classList.remove('hidden');
+  editBtn.textContent = 'Cancel';
+  saveBtn.classList.remove('hidden');
+  setTimeout(() => noteTextarea.focus(), 50);
+}
+
+// Save note from modal
+async function saveNoteFromModal(fileId) {
   if (!fileId || !CURRENT_USER || !SKYSAFE_TOKEN) return;
-  if (loading.note) return;
-  const note = (document.getElementById('imageNote') || { value: '' }).value;
-  loading.note = true;
+  const noteTextarea = document.getElementById('noteTextarea');
+  const newNote = (noteTextarea && noteTextarea.value) ? noteTextarea.value : '';
+
   try {
     disableUI();
-    const res = await callAppsScript({ action: 'saveImageNote', fileId, note, token: SKYSAFE_TOKEN });
+    const res = await callAppsScript({ action: 'saveImageNote', fileId, note: newNote, token: SKYSAFE_TOKEN });
     if (res && res.success) {
-      // Update local copy
+      // update local cache
       const idx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fileId));
-      if (idx !== -1) IMAGE_URLS[idx].note = note;
+      if (idx !== -1) IMAGE_URLS[idx].note = newNote;
+      // switch UI back to read-only
+      const noteView = document.getElementById('noteView');
+      const noteTextareaEl = document.getElementById('noteTextarea');
+      const editBtn = document.getElementById('noteEditBtn');
+      const saveBtn = document.getElementById('noteSaveBtn');
+      noteView.textContent = newNote;
+      noteTextareaEl.classList.add('hidden');
+      noteView.classList.remove('hidden');
+      editBtn.textContent = 'Edit';
+      saveBtn.classList.add('hidden');
       toast('Note saved');
     } else {
       toast((res && res.message) ? res.message : 'Save failed');
     }
   } catch (e) {
-    console.error('saveNoteForImage', e);
+    console.error('saveNoteFromModal', e);
     toast(e.message || 'Save failed');
   } finally {
-    loading.note = false;
     enableUI();
   }
 }
 
 /* LOGOUT */
 async function logoutUser() {
-  // Call server logout but do local cleanup regardless of server
   try {
     disableUI();
-    try {
-      if (SKYSAFE_TOKEN) await callAppsScript({ action: 'logout', token: SKYSAFE_TOKEN });
-    } catch (e) { /* ignore call errors when logging out */ }
+    try { if (SKYSAFE_TOKEN) await callAppsScript({ action: 'logout', token: SKYSAFE_TOKEN }); } catch (e) {}
   } finally {
     forceLogoutLocal();
     enableUI();
