@@ -13,14 +13,14 @@
 <body class="theme-default no-auth">
 
   <!-- TOP NAV -->
-  <header class="topbar">
+  <header class="topbar" role="banner" aria-hidden="false">
     <div class="topbar-inner">
-      <div class="brand">
+      <div class="brand" aria-label="SkyLens home">
         <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2L2 7v6c0 5 6 9 10 9s10-4 10-9V7L12 2z"/></svg>
         <span class="app-name">SkyLens</span>
       </div>
 
-      <div class="top-right">
+      <div class="top-right" aria-hidden="false">
         <select id="themeSelect" class="control theme-select" aria-label="Select theme">
           <option value="default">Default</option>
           <option value="dark">Dark</option>
@@ -28,30 +28,37 @@
           <option value="sunset">Sunset</option>
         </select>
 
-        <button id="logoutButton" class="control icon-btn" title="Logout" aria-label="Logout" onclick="logoutUser()">
-          <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M16 13v-2H7V8l-5 4 5 4v-3zM20 3h-8v2h8v14h-8v2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
+        <button id="logoutButton" class="control icon-btn" title="Logout" aria-label="Logout">
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 13v-2H7V8l-5 4 5 4v-3zM20 3h-8v2h8v14h-8v2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
         </button>
       </div>
     </div>
   </header>
 
   <!-- OFFLINE BANNER -->
-  <div id="offlineStatus" class="offline-banner hidden">You're offline</div>
+  <div id="offlineStatus" class="offline-banner hidden" aria-hidden="true">You're offline</div>
 
   <!-- FULLSCREEN DROP OVERLAY (shows on drag anywhere) -->
   <div id="fullDropOverlay" class="full-drop-overlay hidden" aria-hidden="true">
-    <div class="full-drop-inner">
+    <div class="full-drop-inner" role="region" aria-label="Drop files to upload">
       <svg width="56" height="56" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 10l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <div class="drop-text-lg">Drop here to upload</div>
       <div class="drop-sub">Release to upload files to SkyLens</div>
     </div>
   </div>
 
-  <main class="page">
+  <main class="page" role="main">
+    <!-- NOSCRIPT -->
+    <noscript>
+      <div style="margin:18px auto; max-width:900px; text-align:center; color:#ffdede; background:rgba(0,0,0,0.4); padding:10px; border-radius:8px;">
+        SkyLens requires JavaScript. Please enable JavaScript to use the gallery.
+      </div>
+    </noscript>
+
     <!-- AUTH / LOGIN CARD -->
-    <section id="authSection" class="auth-wrap center-card">
-      <div class="auth-card">
-        <h1 id="authTitle">Login to Skylens</h1>
+    <section id="authSection" class="auth-wrap center-card" aria-labelledby="authTitle">
+      <div class="auth-card" role="form" aria-describedby="authError">
+        <h1 id="authTitle">Login to SkyLens</h1>
 
         <form id="loginForm" class="form">
           <div class="field">
@@ -74,7 +81,7 @@
 
           <div id="authError" class="form-error" aria-live="polite"></div>
 
-          <div class="actions">
+          <div class="actions" style="display:flex; gap:10px; align-items:center; margin-top:8px;">
             <button id="authSubmitBtn" type="submit" class="btn primary">Continue</button>
             <button id="signupToggleBtn" type="button" class="btn ghost">Create account</button>
           </div>
@@ -83,12 +90,12 @@
     </section>
 
     <!-- GALLERY -->
-    <section id="gallerySection" class="gallery-wrap hidden">
+    <section id="gallerySection" class="gallery-wrap hidden" aria-live="polite">
       <!-- SMALL top dropzone kept for legacy but not primary UX -->
-      <div id="dropZone" class="dropzone hidden">
+      <div id="dropZone" class="dropzone hidden" aria-hidden="true">
         <div class="dropzone-inner">
           <input id="imageInput" type="file" accept="image/*" multiple class="hidden" />
-          <div class="drop-text">Drag & drop images here or <button id="browseBtn" class="link">browse</button></div>
+          <div class="drop-text">Drag & drop images here or <button id="browseBtn" class="link" type="button">browse</button></div>
         </div>
       </div>
 
@@ -96,20 +103,20 @@
       <div id="gallery" class="gallery-grid" aria-live="polite" aria-label="Image gallery"></div>
 
       <div class="gallery-footer">
-        <button id="loadMoreBtn" class="btn outline hidden">Load more</button>
-        <div id="loadingSpinner" class="spinner hidden" aria-hidden="true"></div>
+        <button id="loadMoreBtn" class="btn outline hidden" type="button">Load more</button>
+        <div id="loadingSpinner" class="spinner hidden" aria-hidden="true" role="status" aria-label="Loading"></div>
       </div>
     </section>
   </main>
 
   <!-- LIGHTBOX / VIEWER -->
-  <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true">
+  <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" aria-label="Image viewer">
     <button class="lightbox-close icon-btn" onclick="closeLightbox()" aria-label="Close">✕</button>
     <button class="lightbox-nav prev" onclick="prevImage()" aria-label="Previous">‹</button>
     <div class="lightbox-content">
       <img id="lightboxImage" src="" alt="Full image" />
       <div class="note-area">
-        <textarea id="imageNote" placeholder="Notes"></textarea>
+        <textarea id="imageNote" placeholder="Notes" aria-label="Image notes"></textarea>
         <div class="note-actions">
           <button id="saveNoteBtn" class="btn" type="button">Save</button>
           <button id="deleteImageBtn" class="btn danger" type="button">Delete</button>
@@ -120,29 +127,30 @@
   </div>
 
   <!-- CAMERA MODAL -->
-  <div id="cameraModal" class="modal hidden" aria-hidden="true">
-    <div class="modal-inner">
-      <video id="cameraPreview" autoplay playsinline></video>
-      <div class="camera-actions">
-        <button id="captureBtn" class="btn">Capture</button>
-        <button id="closeCameraBtn" class="btn ghost">Close</button>
+  <div id="cameraModal" class="modal hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Camera capture">
+    <div class="modal-inner center">
+      <video id="cameraPreview" autoplay playsinline style="width:100%; max-width:420px; border-radius:10px;"></video>
+      <div class="camera-actions" style="margin-top:10px;">
+        <button id="captureBtn" class="btn" type="button">Capture</button>
+        <button id="closeCameraBtn" class="btn ghost" type="button">Close</button>
       </div>
     </div>
   </div>
 
   <!-- FLOATING ACTION BUTTON -->
-  <div class="fab-wrap">
-    <button id="fabOpen" class="fab" title="Upload / Camera" aria-label="Upload or capture">
-      <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 5v14m7-7H5"/></svg>
+  <div class="fab-wrap" aria-hidden="false">
+    <button id="fabOpen" class="fab" title="Upload or capture" aria-label="Upload or capture">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 5v14m7-7H5"/></svg>
     </button>
 
-    <div id="fabOptions" class="fab-options hidden">
-      <label for="imageInput" id="fabUploadLabel" class="fab-option">Upload</label>
+    <div id="fabOptions" class="fab-options hidden" aria-hidden="true">
+      <!-- label opens file picker on click; has tabindex + role for accessibility -->
+      <label for="imageInput" id="fabUploadLabel" class="fab-option" role="button" tabindex="0">Upload</label>
       <button id="openCameraBtn" class="fab-option" type="button">Camera</button>
     </div>
   </div>
 
-  <div id="toast" class="toast hidden" aria-live="polite"></div>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <script src="script.js" defer></script>
 </body>
