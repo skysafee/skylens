@@ -1,11 +1,11 @@
 // =========================
-// Skylens - script.js (lightbox mobile fixes + load-more-on-swipe)
+// Skylens - script.js (complete with SW + install btn)
 // =========================
 
 /* CONFIG */
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwsuhmmfT051Lb8AW2l_tPBBoizhuiLA4rjRbpzWalT7fjjw3DsKowKjcWffmYwrWaO/exec';
-const INITIAL_LOAD_COUNT = 10;
-const LOAD_MORE_COUNT = 10;
+const INITIAL_LOAD_COUNT = 8;
+const LOAD_MORE_COUNT = 16;
 
 /* STATE */
 let CURRENT_USER = localStorage.getItem('CURRENT_USER') || null;
@@ -27,6 +27,9 @@ const noteLoading = {};
 let videoStream = null;
 let cameraFacing = 'environment';
 let cameraStarting = false;
+
+/* PWA install flow */
+let deferredPrompt = null;
 
 /* HELPERS */
 function toast(msg, timeout = 2200) {
@@ -530,24 +533,20 @@ function updateLightboxImage() {
   if (el) el.src = obj.url;
 }
 async function nextImage() {
-  // If there is a next image already loaded, just move
   if (CURRENT_INDEX < IMAGE_URLS.length - 1) {
     CURRENT_INDEX++;
     updateLightboxImage();
     return;
   }
 
-  // If we're at the last loaded image but server has more, try to fetch more
   if (HAS_MORE && !loading.gallery) {
     const prevLen = IMAGE_URLS.length;
     await loadGallery(NEXT_START, LOAD_MORE_COUNT);
-    // if we got more images appended, advance to the next one
     if (IMAGE_URLS.length > prevLen) {
       CURRENT_INDEX++;
       updateLightboxImage();
     }
   }
-  // else nothing to do (already at last)
 }
 function prevImage() {
   if (CURRENT_INDEX > 0) {
@@ -802,6 +801,80 @@ function wireDragOverlay() {
   window.addEventListener('drop', (e) => { e.preventDefault(); dragCounter = 0; overlay.classList.add('hidden'); const files = [...(e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files : [])]; if (files.length) files.forEach(f => uploadImage(f)); });
 }
 
+/* PWA: create/hide install button & handle beforeinstallprompt */
+function createInstallButtonIfNeeded() {
+  // If already installed (standalone), don't show
+  const isStandalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+  const iosStandalone = window.navigator.standalone; // iOS
+  if (isStandalone || iosStandalone) return;
+
+  const topRight = document.querySelector('.top-right');
+  if (!topRight) return;
+  if (document.getElementById('installBtn')) return; // already exists
+
+  const btn = document.createElement('button');
+  btn.id = 'installBtn';
+  btn.className = 'control';
+  btn.title = 'Install app';
+  btn.setAttribute('aria-label', 'Install app');
+  btn.innerHTML = `<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M5 12l7-7 7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M5 21h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> Install`;
+  btn.style.display = 'none'; // hidden until we know install is available
+  topRight.insertBefore(btn, topRight.firstChild);
+
+  btn.addEventListener('click', async () => {
+    if (!deferredPrompt) {
+      toast('Install not available');
+      return;
+    }
+    try {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      btn.style.display = 'none';
+      if (choice.outcome === 'accepted') toast('Thanks — app installed');
+      else toast('Install dismissed');
+    } catch (e) {
+      console.error('install prompt error', e);
+      toast('Install failed');
+    }
+  });
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  // prevent automatic prompt
+  e.preventDefault();
+  deferredPrompt = e;
+  createInstallButtonIfNeeded();
+  const btn = document.getElementById('installBtn');
+  if (btn) btn.style.display = 'inline-flex';
+});
+
+window.addEventListener('appinstalled', (evt) => {
+  // App installed — hide install button
+  deferredPrompt = null;
+  const btn = document.getElementById('installBtn');
+  if (btn) btn.style.display = 'none';
+  toast('App installed');
+});
+
+// SW registration: register relative path so it works under repo subpath
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const reg = await navigator.serviceWorker.register('./service-worker.js');
+    console.log('Service Worker registered:', reg);
+    navigator.serviceWorker.addEventListener('message', ev => {
+      if (ev.data && ev.data.type === 'SKY_UPDATE') {
+        // non-intrusive update available
+        console.log('SW update message', ev.data);
+        toast('App updated');
+      }
+    });
+  } catch (e) {
+    console.warn('SW registration failed', e);
+  }
+}
+
 /* INIT */
 window.addEventListener('DOMContentLoaded', () => {
   bindUI();
@@ -809,12 +882,19 @@ window.addEventListener('DOMContentLoaded', () => {
   wireDragOverlay();
   updateTopbar();
 
+  // ensure lightbox gets appropriate touch-action to help pointer/touch delivery
   try {
     const lb = document.getElementById('lightbox');
     if (lb) lb.style.touchAction = 'pan-y';
     const img = document.getElementById('lightboxImage');
     if (img) img.style.touchAction = 'none';
   } catch (e) {}
+
+  // create install button DOM (hidden until beforeinstallprompt fires)
+  createInstallButtonIfNeeded();
+
+  // register service worker
+  registerServiceWorker();
 
   if (CURRENT_USER && SKYSAFE_TOKEN) {
     document.getElementById('authSection')?.classList.add('hidden');
