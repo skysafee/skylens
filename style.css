@@ -133,7 +133,6 @@ body.no-auth .top-right { display:none !important; }
 button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { opacity: 0.6 !important; pointer-events: none !important; cursor: not-allowed !important; filter: grayscale(10%); }
 
 /* ---------- Compact Masonry-style Gallery (columns) ---------- */
-/* Use CSS columns for a Pinterest/Photos-like masonry that preserves natural aspect ratio */
 .gallery-grid {
   column-width: var(--thumb-min);
   column-gap: var(--gap);
@@ -142,7 +141,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
   margin: 0;
 }
 
-/* each tile is an inline-block so columns flow */
+/* each tile is inline-block so columns flow */
 .gallery-item {
   display: inline-block;
   width: 100%;
@@ -157,7 +156,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .gallery-item img {
   display:block;
   width:100%;
-  height:auto; /* preserve aspect ratio */
+  height:auto;
   object-fit: cover;
   transition: transform .18s ease, opacity .15s ease;
   opacity: 0;
@@ -166,11 +165,11 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .gallery-item:hover { transform: translateY(-4px); box-shadow:0 8px 26px rgba(0,0,0,0.5); }
 .gallery-item:hover img { transform: scale(1.02); }
 
-/* skeleton based on intrinsic tile height — keep aspect-like placehold by setting height via inline content if needed */
+/* skeleton placeholder */
 .gallery-item .skeleton {
   width:100%;
   display:block;
-  aspect-ratio: 4 / 3; /* placeholder aspect — not forcing final image */
+  aspect-ratio: 4 / 3;
   background: linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.04) 50%, rgba(255,255,255,0.02) 100%);
   background-size: 200% 100%;
   animation: shimmer 1.2s linear infinite;
@@ -215,12 +214,81 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 #noteModal .note-spinner { width:18px; height:18px; border-radius:50%; border:2px solid rgba(255,255,255,0.06); border-top-color:var(--accent); animation:spin .9s linear infinite; display:inline-block; margin-left:8px; }
 #noteModal .note-spinner.hidden { display:none; }
 
-/* ---------- Camera Modal ---------- */
+/* ---------- Camera Modal (FULLSCREEN + bottom controls) ---------- */
 .modal { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.6); z-index:1400; }
-.modal-inner { background: transparent; border-radius:12px; }
-.camera-preview-wrap { position:relative; width:100%; max-width:420px; border-radius:12px; overflow:hidden; background:#000; }
-.video-flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .18s ease; }
-.camera-controls { display:flex; gap:8px; justify-content:center; margin-top:10px; }
+.camera-modal-inner {
+  width:100vw;
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-start;
+  position:relative;
+  overflow:hidden;
+}
+.camera-preview-wrap {
+  width:100%;
+  height:100%;
+  background:#000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  position:relative;
+}
+.camera-preview-wrap video {
+  width:100%;
+  height:100%;
+  object-fit: cover;
+  display:block;
+}
+.video-flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .18s ease; z-index:10; }
+
+/* bottom controls overlay */
+.camera-controls {
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:28px;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:40px;
+  z-index:20;
+  pointer-events:auto;
+}
+
+/* circular small icon buttons (switch & close) */
+.icon-btn.circle {
+  width:56px; height:56px; border-radius:50%;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  display:flex; align-items:center; justify-content:center;
+  color:#fff; padding:6px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.45);
+}
+
+/* capture button: centered, large, visually prominent */
+.capture-btn {
+  width:84px; height:84px; border-radius:50%;
+  background: transparent; border: none; display:flex; align-items:center; justify-content:center;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+}
+
+/* small mobile adjustments */
+@media (max-width:900px) {
+  :root { --thumb-min: 92px; }
+  .page { padding: 0 10px; }
+  .auth-card { padding: 18px; }
+}
+@media (max-width:520px) {
+  :root { --thumb-min: 86px; --topbar-height: 56px; }
+  .brand .app-name { display:none; }
+  .topbar { height: var(--topbar-height); }
+  .page { margin-top: calc(var(--topbar-height) + 8px); }
+  .fab { width:52px; height:52px; }
+  .icon-btn.circle { width:48px; height:48px; }
+  .capture-btn { width:72px; height:72px; }
+}
 
 /* ---------- FAB / Actions ---------- */
 .fab-wrap { position: fixed; right: 14px; bottom: 18px; z-index:1250; display:flex; flex-direction:column; align-items:flex-end; gap:8px; }
@@ -233,20 +301,6 @@ body.no-auth .fab-wrap { display:none !important; }
 
 /* ---------- Icon sizing ---------- */
 .icon-svg { width:20px; height:20px; display:block; vertical-align:middle; fill:currentColor; }
-
-/* ---------- Small screens adjustments (update topbar CSS var!) ---------- */
-@media (max-width:900px) {
-  :root { --thumb-min: 92px; }
-  .page { padding: 0 10px; }
-  .auth-card { padding: 18px; }
-}
-@media (max-width:520px) {
-  :root { --thumb-min: 86px; --topbar-height: 56px; } /* <-- important: update CSS var so .page margin keeps content below topbar */
-  .brand .app-name { display:none; }
-  .topbar { height: var(--topbar-height); }
-  .page { margin-top: calc(var(--topbar-height) + 8px); }
-  .fab { width:52px; height:52px; }
-}
 
 /* ---------- Misc helpers ---------- */
 .center { display:flex; align-items:center; justify-content:center; }
