@@ -6,7 +6,7 @@
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwsuhmmfT051Lb8AW2l_tPBBoizhuiLA4rjRbpzWalT7fjjw3DsKowKjcWffmYwrWaO/exec';
 const INITIAL_LOAD_COUNT = 8;
 const LOAD_MORE_COUNT = 16;
-
+const noteLoading = {};
 /* STATE */
 let CURRENT_USER = localStorage.getItem('CURRENT_USER') || null;
 let SKYSAFE_TOKEN = localStorage.getItem('skySafeeToken') || null;
@@ -854,3 +854,4 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('gallerySection')?.classList.add('hidden');
   }
 });
+
