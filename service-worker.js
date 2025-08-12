@@ -1,5 +1,5 @@
 // service-worker.js
-const SW_VERSION = 'v202508121'; // bump on each deploy
+const SW_VERSION = 'vas202508121'; // bump on each deploy
 const CACHE_NAME = 'skylens-shell-' + SW_VERSION;
 const RUNTIME_CACHE = 'skylens-runtime-' + SW_VERSION;
 
