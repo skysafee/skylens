@@ -49,6 +49,7 @@ function forceLogoutLocal(reasonMsg) {
   document.getElementById('authSection')?.classList.remove('hidden');
   document.getElementById('gallerySection')?.classList.add('hidden');
   if (reasonMsg) toast(reasonMsg);
+  window.location.reload(true);
 }
 
 /* Robust Apps Script caller */
@@ -821,6 +822,7 @@ async function logoutUser() {
   } finally {
     forceLogoutLocal();
     enableUI();
+    window.location.reload(true);
   }
 }
 
@@ -854,4 +856,5 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('gallerySection')?.classList.add('hidden');
   }
 });
+
 
