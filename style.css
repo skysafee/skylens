@@ -1,5 +1,5 @@
 /* =====================================================
-   SkyLens — style.css (final: auth + compact masonry + camera + icons)
+   SkyLens — style.css (final: auth + masonry + camera + drag + tweaks)
    ===================================================== */
 
 /* ---------- Theme variables ---------- */
@@ -12,10 +12,10 @@
   --card: rgba(255,255,255,0.03);
   --surface: rgba(255,255,255,0.04);
 
-  --gap: 8px;               /* tightened gap for compact layout */
+  --gap: 10px;              /* slightly bigger gap for finger spacing */
   --page-padding: 12px;
-  --topbar-height: 64px;    /* used by .page margin to avoid overlap */
-  --thumb-min: 110px;       /* minimum column width */
+  --topbar-height: 64px;
+  --thumb-min: 140px;       /* larger minimum column width — less compact */
   --radius: 12px;
 }
 
@@ -132,6 +132,30 @@ body.no-auth .top-right { display:none !important; }
 /* disabled visual */
 button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { opacity: 0.6 !important; pointer-events: none !important; cursor: not-allowed !important; filter: grayscale(10%); }
 
+/* ---------- FULLSCREEN DROP OVERLAY (styled) ---------- */
+.full-drop-overlay {
+  position: fixed; inset:0; background: rgba(0,0,0,0.55); z-index: 1400; display:flex; align-items:center; justify-content:center;
+}
+.full-drop-inner { text-align:center; color:#fff; display:flex; flex-direction:column; gap:12px; align-items:center; padding:18px; }
+.full-drop-inner svg { opacity:0.95; color:var(--accent); }
+.drop-text-lg { font-size:1.15rem; font-weight:700; }
+.drop-sub { opacity:0.9; color: rgba(255,255,255,0.92); }
+
+/* ---------- small dropzone inside gallery (styled) ---------- */
+.dropzone {
+  border: 2px dashed rgba(255,255,255,0.06);
+  padding:18px;
+  border-radius:12px;
+  margin-bottom:18px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));
+  color:var(--muted);
+}
+.dropzone .drop-text { font-weight:700; }
+.dropzone .link { background:none; border:none; color:var(--accent); cursor:pointer; text-decoration:underline; padding:0; }
+
 /* ---------- Compact Masonry-style Gallery (columns) ---------- */
 .gallery-grid {
   column-width: var(--thumb-min);
@@ -141,7 +165,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
   margin: 0;
 }
 
-/* each tile is inline-block so columns flow */
+/* each tile */
 .gallery-item {
   display: inline-block;
   width: 100%;
@@ -197,7 +221,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
   padding:12px;
 }
 .lightbox-content { max-width: 1200px; width: 100%; max-height: 90vh; display:flex; flex-direction:column; align-items:center; gap: 10px; }
-.lightbox img { max-width: 100%; max-height: 80vh; border-radius: 10px; object-fit: contain; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
+.lightbox img { max-width: 100%; max-height: 80vh; border-radius: 10px; object-fit: contain; box-shadow: 0 20px 40px rgba(0,0,0,0.6); touch-action: none; } /* touch-action none on image to ensure swipe detection on it */
 .lightbox-close { position:absolute; top:16px; right:16px; background:transparent; border-radius:8px; padding:8px; }
 .lightbox-nav { position:absolute; top:50%; transform:translateY(-50%); background:transparent; border:none; color:var(--text); font-size:26px; padding:8px; cursor:pointer; }
 .lightbox-nav.prev{ left: 8px; } 
@@ -214,7 +238,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 #noteModal .note-spinner { width:18px; height:18px; border-radius:50%; border:2px solid rgba(255,255,255,0.06); border-top-color:var(--accent); animation:spin .9s linear infinite; display:inline-block; margin-left:8px; }
 #noteModal .note-spinner.hidden { display:none; }
 
-/* ---------- Camera Modal (FULLSCREEN + bottom controls) ---------- */
+/* ---------- Camera Modal ---------- */
 .modal { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.6); z-index:1400; }
 .camera-modal-inner {
   width:100vw;
@@ -276,12 +300,12 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 
 /* small mobile adjustments */
 @media (max-width:900px) {
-  :root { --thumb-min: 92px; }
+  :root { --thumb-min: 120px; }
   .page { padding: 0 10px; }
   .auth-card { padding: 18px; }
 }
 @media (max-width:520px) {
-  :root { --thumb-min: 86px; --topbar-height: 56px; }
+  :root { --thumb-min: 96px; --topbar-height: 56px; }
   .brand .app-name { display:none; }
   .topbar { height: var(--topbar-height); }
   .page { margin-top: calc(var(--topbar-height) + 8px); }
