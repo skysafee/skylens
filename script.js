@@ -1,11 +1,11 @@
 // =========================
-// Skylens - script.js (swipe fixes + touch fallback + camera switch)
+// Skylens - script.js (lightbox mobile fixes + load-more-on-swipe)
 // =========================
 
 /* CONFIG */
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwsuhmmfT051Lb8AW2l_tPBBoizhuiLA4rjRbpzWalT7fjjw3DsKowKjcWffmYwrWaO/exec';
-const INITIAL_LOAD_COUNT = 8;
-const LOAD_MORE_COUNT = 16;
+const INITIAL_LOAD_COUNT = 10;
+const LOAD_MORE_COUNT = 10;
 
 /* STATE */
 let CURRENT_USER = localStorage.getItem('CURRENT_USER') || null;
@@ -25,11 +25,8 @@ const noteLoading = {};
 
 /* Camera state */
 let videoStream = null;
-let cameraFacing = 'environment'; // default rear
+let cameraFacing = 'environment';
 let cameraStarting = false;
-
-/* Swipe detection state */
-let swipeState = { startX: 0, startY: 0, startTime: 0, active: false };
 
 /* HELPERS */
 function toast(msg, timeout = 2200) {
@@ -132,7 +129,7 @@ function initObserver() {
   }
 }
 
-/* UI BINDINGS (plus swipe handlers + touch fallback) */
+/* UI BINDINGS (plus swipe handlers + touch fallback attached to both lb and image) */
 function bindUI() {
   const loginForm = document.getElementById('loginForm');
   const signupToggleBtn = document.getElementById('signupToggleBtn');
@@ -182,7 +179,7 @@ function bindUI() {
   // button handlers (ensure close/next/prev are wired)
   document.querySelectorAll('.lightbox-close').forEach(b => b.addEventListener('click', closeLightbox));
   document.querySelectorAll('.lightbox-nav.prev').forEach(b => b.addEventListener('click', prevImage));
-  document.querySelectorAll('.lightbox-nav.next').forEach(b => b.addEventListener('click', nextImage));
+  document.querySelectorAll('.lightbox-nav.next').forEach(b => b.addEventListener('click', () => nextImage()));
 
   // keyboard navigation & escape
   document.addEventListener('keydown', (e) => {
@@ -193,53 +190,43 @@ function bindUI() {
     if (e.key === 'ArrowLeft') prevImage();
   });
 
-  // SWIPE: pointer events + touch fallback on #lightbox
+  // SWIPE: pointer events + touch fallback on #lightbox AND #lightboxImage
   const lb = document.getElementById('lightbox');
-  if (lb) {
-    // instruct browser to prioritize vertical scrolling but allow horizontal gestures to be detected
-    try { lb.style.touchAction = 'pan-y'; } catch (e) { /* ignore */ }
-
-    // PointerEvents (modern)
+  const lbImg = document.getElementById('lightboxImage');
+  const attachSwipe = (el) => {
+    if (!el) return;
+    try { el.style.touchAction = 'pan-y'; } catch (e) {}
     if (window.PointerEvent) {
       let pointerDown = false;
-      lb.addEventListener('pointerdown', (e) => {
-        // track only touch/pen/mouse as needed
-        swipeState.startX = e.clientX;
-        swipeState.startY = e.clientY;
-        swipeState.startTime = Date.now();
-        swipeState.active = true;
+      let startX = 0, startY = 0;
+      el.addEventListener('pointerdown', (e) => {
+        startX = e.clientX; startY = e.clientY;
         pointerDown = true;
       }, { passive: true });
 
-      lb.addEventListener('pointerup', (e) => {
+      el.addEventListener('pointerup', (e) => {
         if (!pointerDown) return;
         pointerDown = false;
-        if (!swipeState.active) return;
-        const dx = e.clientX - swipeState.startX;
-        const dy = e.clientY - swipeState.startY;
-        swipeState.active = false;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
         const absX = Math.abs(dx), absY = Math.abs(dy);
         if (absX > 50 && absX > absY) {
           if (dx < 0) nextImage(); else prevImage();
         }
       }, { passive: true });
 
-      lb.addEventListener('pointercancel', () => {
-        swipeState.active = false;
-        pointerDown = false;
-      }, { passive: true });
+      el.addEventListener('pointercancel', () => { pointerDown = false; }, { passive: true });
     }
 
-    // Touch fallback (covers Safari / older browsers and odd cases)
-    // We use passive listeners (no preventDefault) to avoid trapping vertical scroll; we only react on end.
-    let tStartX = 0, tStartY = 0, tStartTime = 0;
-    lb.addEventListener('touchstart', (e) => {
+    // touch fallback
+    let tStartX = 0, tStartY = 0;
+    el.addEventListener('touchstart', (e) => {
       const t = (e.touches && e.touches[0]);
       if (!t) return;
-      tStartX = t.clientX; tStartY = t.clientY; tStartTime = Date.now();
+      tStartX = t.clientX; tStartY = t.clientY;
     }, { passive: true });
 
-    lb.addEventListener('touchend', (e) => {
+    el.addEventListener('touchend', (e) => {
       const t = (e.changedTouches && e.changedTouches[0]);
       if (!t) return;
       const dx = t.clientX - tStartX;
@@ -249,7 +236,10 @@ function bindUI() {
         if (dx < 0) nextImage(); else prevImage();
       }
     }, { passive: true });
-  }
+  };
+
+  attachSwipe(lb);
+  attachSwipe(lbImg);
 }
 
 /* TOPBAR visibility */
@@ -365,7 +355,7 @@ function createGalleryItem(obj) {
   img.loading = 'lazy';
   img.style.display = 'block';
   img.style.opacity = '0';
-  img.draggable = false; // prevent native dragging from interfering with gestures
+  img.draggable = false;
 
   img.onload = () => {
     div.classList.add('loaded');
@@ -425,7 +415,6 @@ async function loadGallery(start = 0, limit = INITIAL_LOAD_COUNT) {
       return true;
     });
 
-    const baseIndex = IMAGE_URLS.length;
     IMAGE_URLS = IMAGE_URLS.concat(newImages);
 
     const container = document.getElementById('gallery');
@@ -540,11 +529,25 @@ function updateLightboxImage() {
   const el = document.getElementById('lightboxImage');
   if (el) el.src = obj.url;
 }
-function nextImage() {
+async function nextImage() {
+  // If there is a next image already loaded, just move
   if (CURRENT_INDEX < IMAGE_URLS.length - 1) {
     CURRENT_INDEX++;
     updateLightboxImage();
+    return;
   }
+
+  // If we're at the last loaded image but server has more, try to fetch more
+  if (HAS_MORE && !loading.gallery) {
+    const prevLen = IMAGE_URLS.length;
+    await loadGallery(NEXT_START, LOAD_MORE_COUNT);
+    // if we got more images appended, advance to the next one
+    if (IMAGE_URLS.length > prevLen) {
+      CURRENT_INDEX++;
+      updateLightboxImage();
+    }
+  }
+  // else nothing to do (already at last)
 }
 function prevImage() {
   if (CURRENT_INDEX > 0) {
@@ -739,7 +742,7 @@ async function logoutUser() {
   }
 }
 
-/* CAMERA improved */
+/* CAMERA improved (unchanged logic) */
 async function startCamera() {
   if (cameraStarting) return;
   cameraStarting = true;
@@ -806,10 +809,11 @@ window.addEventListener('DOMContentLoaded', () => {
   wireDragOverlay();
   updateTopbar();
 
-  // ensure lightbox gets appropriate touch-action to help pointer/touch delivery
   try {
     const lb = document.getElementById('lightbox');
     if (lb) lb.style.touchAction = 'pan-y';
+    const img = document.getElementById('lightboxImage');
+    if (img) img.style.touchAction = 'none';
   } catch (e) {}
 
   if (CURRENT_USER && SKYSAFE_TOKEN) {
