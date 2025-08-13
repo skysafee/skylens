@@ -120,7 +120,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
   display:block;
   background: linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.04) 50%, rgba(255,255,255,0.02) 100%);
   background-size: 200% 100%;
-  animation: shimmer 1.2s linear infinite;
+  animation: shimmer 2s linear infinite;
 }
 @keyframes shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
 
@@ -161,31 +161,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 }
 .lightbox .lightbox-close { position:absolute; top:16px; right:16px; background:rgba(0,0,0,0.32); padding:8px; border-radius:8px; color:var(--text); border:none; cursor:pointer; z-index:1310; }
 .lightbox-content { width:100%; max-width:1100px; max-height: calc(100vh - 80px); display:flex; flex-direction:column; align-items:center; gap:12px; position:relative; }
-
-/* <-- PATCH: reserve space for bottom action bar so image doesn't overlap it */
-.lightbox-content {
-  /* keep existing layout + reserve bottom space for action bar */
-  padding-bottom: 72px; /* tweak if your actions are larger */
-}
-
-/* Ensure action bar is pinned above the image and centered */
-.lightbox-actions {
-  position: absolute;
-  top: 450%;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1330;            /* above image & nav */
-  display: flex;            /* respects your inline style */
-  gap: 10px;
-  align-items: center;
-  pointer-events: auto;
-  margin-top: 0 !important; /* reset inline margin-top if present */
-  /* subtle readable background — optional, remove if you prefer transparent */
-  background: rgba(0,0,0,0.18);
-  padding: 6px 10px;
-  border-radius: 10px;
-  backdrop-filter: blur(4px);
-}
+.lightbox-image-wrap { width:100%; display:flex; align-items:center; justify-content:center; position:relative; overflow:visible; }
 
 /* base image rules used by JS animations — use classes for animation states */
 .lightbox-image {
@@ -205,7 +181,6 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
   transform: translate(-50%, -50%) scale(1);
   transition: transform .42s cubic-bezier(.2,.9,.25,1), opacity .32s ease;
   opacity: 0;
-  z-index: 1310; /* ensure image is below the actions */
 }
 
 /* When image is visible (entered) */
@@ -227,17 +202,17 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 
 /* Controls */
 .lightbox-nav {
-  position:absolute; top:50%; transform:translateY(-50%); background:transparent; border:none; color:var(--text); font-size:26px; padding:8px; cursor:pointer; z-index:1320;
+  position:absolute; top:50%; transform:translateY(-50%); background:transparent; border:none; color:var(--text); font-size:26px; padding:8px; cursor:pointer; z-index:1310;
 }
 .lightbox-nav.prev { left: 10px; } .lightbox-nav.next { right: 10px; }
 @media (max-width:640px) { .lightbox-nav { display:none; } }
 
-/* note area inside lightbox (if used) */
+/* note area inside lightbox (if used) 
 .note-area { width:100%; margin-top:8px; display:flex; gap:12px; align-items:flex-end; }
 .note-area textarea { width:100%; min-height:64px; padding:10px; border-radius:8px; background:var(--surface); border:1px solid rgba(255,255,255,0.03); color:var(--text); resize:vertical; }
 .note-actions { display:flex; gap:8px; align-items:center; }
 
-/* --------- Note modal (on-demand) --------- */
+--------- Note modal (on-demand) ---------
 #noteModal {
   position: fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index: 1405;
   background: rgba(0,0,0,0.6); padding:20px;
@@ -247,7 +222,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 }
 #noteModal #noteView { color:var(--muted); min-height:64px; white-space:pre-wrap; }
 #noteModal textarea { width:100%; min-height:120px; padding:10px; border-radius:8px; background:var(--surface); border:1px solid rgba(255,255,255,0.03); color:var(--text); }
-
+*/
 /* --------- Camera modal: full-screen, controls at bottom --------- */
 .modal, #cameraModal { position: fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:1400; background: rgba(0,0,0,0.6); }
 .camera-modal-inner {
@@ -265,7 +240,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .capture-btn { width:84px; height:84px; border-radius:50%; background:transparent; border: 2px solid rgba(255,255,255,0.9); display:flex; align-items:center; justify-content:center; box-shadow: 0 12px 30px rgba(0,0,0,0.5); }
 
 /* small flash overlay element */
-#videoFlash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .14s ease; z-index:30; }
+#videoFlash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .20s ease; z-index:30; }
 
 /* --------- Floating action button --------- */
 .fab-wrap { position: fixed; right: 20px; bottom: 28px; z-index: 1250; display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
@@ -300,4 +275,3 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .small-spinner { width:18px; height:18px; border-radius:50%; border:2px solid rgba(255,255,255,0.08); border-top-color:var(--accent); animation: spin 0.9s linear infinite; display:inline-block; vertical-align:middle; }
 
 /* --------- End --------- */
-
