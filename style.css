@@ -1,7 +1,7 @@
 /* =========================
    SkyLens — unified style.css
    (compact grid, preserved aspect ratio in lightbox,
-    camera full-screen, install button, drag overlay, etc)
+    camera full-screen, drag overlay, slide/zoom lightbox)
    ========================= */
 
 /* --------- Theme variables --------- */
@@ -29,7 +29,6 @@ body.theme-dark    { --bg:#0b1220; --accent:#2196f3; }
 body.theme-ocean   { --bg:linear-gradient(180deg,#001f3f,#012a4a); --accent:#00aced; }
 body.theme-sunset  { --bg:linear-gradient(180deg,#2e1a47,#2b1b3d); --accent:#ff5e5e; }
 
-/* Hide top-right and FAB before auth */
 body.no-auth .top-right { display: none !important; }
 body.no-auth .fab-wrap  { display: none !important; }
 
@@ -61,9 +60,6 @@ html,body { height:100%; margin:0; font-family: Inter, ui-sans-serif, system-ui,
 .control { height:36px; padding:6px 10px; background:transparent; color:var(--text); border-radius:8px; border:1px solid rgba(255,255,255,0.04); }
 .icon-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:6px 8px; background:var(--card); border-radius:8px; cursor:pointer; border:none; color:var(--text); }
 .theme-select { min-width:120px; }
-
-/* Install button (same visual language as control) */
-#installBtn { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:transparent; color:var(--text); cursor:pointer; }
 
 /* --------- Offline banner (if used) --------- */
 .offline-banner { position: fixed; top: calc(var(--topbar-height) + 8px); left:50%; transform:translateX(-50%); background: #ffb4b4; color:#4a0000; padding:8px 14px; border-radius:8px; z-index:1300; box-shadow:0 6px 18px rgba(0,0,0,0.4); }
@@ -147,15 +143,28 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .spinner { width:28px; height:28px; border-radius:50%; border:3px solid rgba(255,255,255,0.06); border-top-color:var(--accent); animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* --------- Lightbox / Viewer (preserve original aspect ratio) --------- */
+/* When lightbox open — dim/fade underlying gallery */
+.gallery-dimmed { filter: blur(2px) brightness(0.45); transition: filter .28s ease, opacity .28s ease; pointer-events: none; user-select: none; }
+
+/* --------- Lightbox / Viewer (preserve original aspect ratio + transitions) --------- */
 .lightbox {
   position: fixed; inset:0; display:flex; align-items:center; justify-content:center; gap:20px;
-  background: linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0.85)); z-index: 1300; padding: 18px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0.85));
+  z-index: 1300; padding: 18px;
+  opacity: 0;
+  transition: opacity .28s ease;
+  pointer-events: none;
+}
+.lightbox.visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 .lightbox .lightbox-close { position:absolute; top:16px; right:16px; background:rgba(0,0,0,0.32); padding:8px; border-radius:8px; color:var(--text); border:none; cursor:pointer; z-index:1310; }
-.lightbox-content { width:100%; max-width:1100px; max-height: calc(100vh - 80px); display:flex; flex-direction:column; align-items:center; gap:12px; }
-.lightbox-image-wrap { width:100%; display:flex; align-items:center; justify-content:center; }
-.lightbox-content img {
+.lightbox-content { width:100%; max-width:1100px; max-height: calc(100vh - 80px); display:flex; flex-direction:column; align-items:center; gap:12px; position:relative; }
+.lightbox-image-wrap { width:100%; display:flex; align-items:center; justify-content:center; position:relative; overflow:visible; }
+
+/* base image rules used by JS animations — use classes for animation states */
+.lightbox-image {
   max-width: calc(100vw - 48px);
   max-height: calc(100vh - 140px);
   width: auto;
@@ -166,7 +175,32 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
   box-shadow: 0 12px 40px rgba(2,6,23,0.7);
   background: #000;
   touch-action: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(1);
+  transition: transform .42s cubic-bezier(.2,.9,.25,1), opacity .32s ease;
+  opacity: 0;
 }
+
+/* When image is visible (entered) */
+.lightbox-image.visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* Slide-enter positions (percent-based so responsive) */
+.lightbox-image.enter-from-right { transform: translate(calc(50% + 100%), -50%); opacity: 0; }
+.lightbox-image.enter-from-left  { transform: translate(calc(50% - 100%), -50%); opacity: 0; }
+
+/* Slide-exit positions */
+.lightbox-image.exit-to-left  { transform: translate(calc(50% - 100%), -50%); opacity: 0; }
+.lightbox-image.exit-to-right { transform: translate(calc(50% + 100%), -50%); opacity: 0; }
+
+/* Zoom-in from thumbnail uses inline transform applied by JS, but we provide smoothness/fallback */
+.lightbox-image.zooming { transition: transform .42s cubic-bezier(.2,.9,.25,1), opacity .22s ease; }
+
+/* Controls */
 .lightbox-nav {
   position:absolute; top:50%; transform:translateY(-50%); background:transparent; border:none; color:var(--text); font-size:26px; padding:8px; cursor:pointer; z-index:1310;
 }
