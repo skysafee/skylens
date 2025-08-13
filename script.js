@@ -1,5 +1,5 @@
 // =========================
-// Skylens - script.js (grid layout, fixed lightbox ordering, install button)
+// Skylens - script.js (grid layout, fixed lightbox ordering, slide + zoom transitions)
 // =========================
 
 /* CONFIG */
@@ -7,6 +7,7 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwsuhmmfT051Lb8AW2l_
 const INITIAL_LOAD_COUNT = 8;
 const LOAD_MORE_COUNT = 16;
 const noteLoading = {};
+
 /* STATE */
 let CURRENT_USER = localStorage.getItem('CURRENT_USER') || null;
 let SKYSAFE_TOKEN = localStorage.getItem('skySafeeToken') || null;
@@ -25,8 +26,8 @@ let videoStream = null;
 let cameraFacing = 'environment';
 let cameraStarting = false;
 
-/* PWA install */
-let deferredPrompt = null;
+/* Lightbox animation guard */
+let lightboxAnimating = false;
 
 /* HELPERS */
 function toast(msg, timeout = 2200) {
@@ -174,11 +175,12 @@ function createGalleryItem(obj) {
   if (imgObserver) imgObserver.observe(img);
   else img.src = img.dataset.src;
 
-  div.addEventListener('click', () => {
+  // pass the thumbnail element so we can animate from it
+  div.addEventListener('click', (e) => {
     const fid = div.dataset.fileid;
-    if (fid) openLightboxByFileId(fid);
+    if (fid) openLightboxByFileId(fid, div);
   });
-  div.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const fid = div.dataset.fileid; if (fid) openLightboxByFileId(fid); } });
+  div.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const fid = div.dataset.fileid; if (fid) openLightboxByFileId(fid, div); } });
   div.tabIndex = 0;
 
   return div;
@@ -304,15 +306,25 @@ function makeSkeletonItem() {
 }
 
 /* LIGHTBOX — keep indices in sync with IMAGE_URLS by using canonical array */
-function openLightbox(index) {
+/* openLightboxByFileId optionally accepts sourceEl (thumbnail DOM element) to animate from */
+function openLightbox(index, sourceEl) {
   if (index < 0 || index >= IMAGE_URLS.length) return;
   CURRENT_INDEX = index;
   const lb = document.getElementById('lightbox');
   if (!lb) return;
+
+  // dim gallery
+  document.getElementById('gallery')?.classList.add('gallery-dimmed');
+
   lb.classList.remove('hidden');
-  updateLightboxImage();
+  // toggle visible state for fade-in
+  requestAnimationFrame(() => lb.classList.add('visible'));
+
+  // show image with animation (zoom from thumbnail if provided)
+  showImageAtIndex(index, { sourceEl, openZoom: !!sourceEl });
 }
-function openLightboxByFileId(fileId) {
+
+function openLightboxByFileId(fileId, sourceEl) {
   const idx = IMAGE_URLS.findIndex(i => String(i.fileId || '') === String(fileId || ''));
   if (idx === -1) {
     // If not present, refresh gallery then try open again
@@ -322,23 +334,177 @@ function openLightboxByFileId(fileId) {
     NEXT_START = 0; HAS_MORE = true;
     loadGallery(0, INITIAL_LOAD_COUNT).then(() => {
       const newIdx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fileId || ''));
-      if (newIdx !== -1) openLightbox(newIdx);
+      if (newIdx !== -1) openLightbox(newIdx, sourceEl);
     });
     return;
   }
-  openLightbox(idx);
+  openLightbox(idx, sourceEl);
 }
-function closeLightbox() { document.getElementById('lightbox')?.classList.add('hidden'); }
-function updateLightboxImage() {
-  const obj = IMAGE_URLS[CURRENT_INDEX];
-  if (!obj) return;
-  const el = document.getElementById('lightboxImage');
-  if (el) el.src = obj.url;
+
+function closeLightbox() {
+  if (lightboxAnimating) return; // avoid closing mid-animation
+  const lb = document.getElementById('lightbox');
+  if (!lb) return;
+  // remove visible classes for fade-out
+  lb.classList.remove('visible');
+  // remove dim on gallery
+  document.getElementById('gallery')?.classList.remove('gallery-dimmed');
+
+  // after transition remove hidden (match CSS transition duration ~280ms)
+  setTimeout(() => {
+    lb.classList.add('hidden');
+    // clear images
+    const wrap = document.querySelector('.lightbox-image-wrap');
+    if (wrap) wrap.replaceChildren();
+    CURRENT_INDEX = -1;
+  }, 320);
 }
+
+/* showImageAtIndex handles entry animations and slide transitions
+   options:
+    - sourceEl: thumbnail element (for zoom-open)
+    - openZoom: boolean (perform zoom-from-thumb)
+    - direction: 'left' or 'right' for slide transitions (optional)
+*/
+function showImageAtIndex(index, options = {}) {
+  if (index < 0 || index >= IMAGE_URLS.length) return;
+  const wrap = document.querySelector('.lightbox-image-wrap');
+  if (!wrap) return;
+  if (lightboxAnimating) return;
+  lightboxAnimating = true;
+
+  const url = IMAGE_URLS[index].url;
+  const direction = options.direction || null;
+  const sourceEl = options.sourceEl || null;
+  const openZoom = !!options.openZoom;
+
+  const existing = wrap.querySelector('img.lightbox-image');
+
+  // Create new image
+  const newImg = document.createElement('img');
+  newImg.className = 'lightbox-image';
+  newImg.alt = 'Lightbox image';
+  newImg.draggable = false;
+  newImg.src = url;
+
+  // When new image loads, perform animation
+  const onLoaded = () => {
+    // if opening with zoom-from-thumbnail
+    if (openZoom && sourceEl) {
+      // compute thumbnail center and lightbox final center & size
+      try {
+        const thumbRect = sourceEl.getBoundingClientRect();
+        const wrapRect = wrap.getBoundingClientRect();
+
+        // final target center in viewport coordinates
+        const finalCenterX = wrapRect.left + wrapRect.width / 2;
+        const finalCenterY = wrapRect.top + wrapRect.height / 2;
+
+        // thumb center
+        const thumbCenterX = thumbRect.left + thumbRect.width / 2;
+        const thumbCenterY = thumbRect.top + thumbRect.height / 2;
+
+        // compute delta in viewport coords
+        const deltaX = thumbCenterX - finalCenterX;
+        const deltaY = thumbCenterY - finalCenterY;
+
+        // scale estimate: ratio of thumb width to (wrap's available width * .9) - conservative
+        const finalMaxWidth = Math.min(window.innerWidth - 48, wrapRect.width);
+        const scale = Math.max(0.12, (thumbRect.width / finalMaxWidth));
+
+        // apply initial transform that places the new image over the thumbnail
+        newImg.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px)) scale(${scale})`;
+        newImg.classList.add('zooming');
+        wrap.appendChild(newImg);
+
+        // force reflow then animate to center/scale(1)
+        // small delay ensures browser registers initial transform
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            newImg.style.transform = 'translate(-50%, -50%) scale(1)';
+            newImg.style.opacity = '1';
+          });
+        });
+
+        // when transition ends, finalize
+        const onEnd = (ev) => {
+          newImg.removeEventListener('transitionend', onEnd);
+          newImg.classList.add('visible');
+          newImg.classList.remove('zooming');
+          if (existing) existing.remove();
+          lightboxAnimating = false;
+          CURRENT_INDEX = index;
+        };
+        newImg.addEventListener('transitionend', onEnd);
+        return;
+      } catch (err) {
+        // fallback to normal entry if anything fails
+        console.warn('zoom-from-thumb failed, falling back', err);
+      }
+    }
+
+    // If this is a slide transition (existing image present)
+    if (existing && direction) {
+      // set initial state for newImg (enter from left/right)
+      if (direction === 'left') {
+        newImg.classList.add('enter-from-right');
+      } else {
+        newImg.classList.add('enter-from-left');
+      }
+      wrap.appendChild(newImg);
+
+      // ensure reflow, then move both
+      requestAnimationFrame(() => {
+        // old image exits (to left for next, to right for prev)
+        existing.classList.add(direction === 'left' ? 'exit-to-left' : 'exit-to-right');
+        existing.classList.remove('visible');
+
+        // new image becomes visible (transitions to center)
+        newImg.classList.remove('enter-from-right', 'enter-from-left');
+        newImg.classList.add('visible');
+
+        // after animation remove old image
+        const cleanup = (ev) => {
+          // wait until transition ends on newImg (or existing)
+          newImg.removeEventListener('transitionend', cleanup);
+          if (existing && existing.parentNode) existing.remove();
+          lightboxAnimating = false;
+          CURRENT_INDEX = index;
+        };
+        newImg.addEventListener('transitionend', cleanup);
+      });
+      return;
+    }
+
+    // No existing image — simple fade/appear
+    newImg.style.opacity = '0';
+    wrap.appendChild(newImg);
+    requestAnimationFrame(() => {
+      newImg.style.opacity = '1';
+      newImg.classList.add('visible');
+    });
+    const onEndNoExisting = () => {
+      newImg.removeEventListener('transitionend', onEndNoExisting);
+      if (existing && existing.parentNode) existing.remove();
+      lightboxAnimating = false;
+      CURRENT_INDEX = index;
+    };
+    newImg.addEventListener('transitionend', onEndNoExisting);
+  };
+
+  // If image already cached or loads instantly, onload may not fire — use complete check
+  newImg.onload = () => setTimeout(onLoaded, 8);
+  if (newImg.complete && newImg.naturalWidth) {
+    // allow a tiny tick so CSS classes exist
+    setTimeout(onLoaded, 8);
+  }
+}
+
 async function nextImage() {
+  if (lightboxAnimating) return;
   if (CURRENT_INDEX < IMAGE_URLS.length - 1) {
-    CURRENT_INDEX++;
-    updateLightboxImage();
+    const newIndex = CURRENT_INDEX + 1;
+    showImageAtIndex(newIndex, { direction: 'left' });
     return;
   }
 
@@ -347,16 +513,17 @@ async function nextImage() {
     const prevLen = IMAGE_URLS.length;
     await loadGallery(NEXT_START, LOAD_MORE_COUNT);
     if (IMAGE_URLS.length > prevLen) {
-      CURRENT_INDEX++;
-      updateLightboxImage();
+      const newIndex = CURRENT_INDEX + 1;
+      showImageAtIndex(newIndex, { direction: 'left' });
     }
   }
   // else nothing
 }
 function prevImage() {
+  if (lightboxAnimating) return;
   if (CURRENT_INDEX > 0) {
-    CURRENT_INDEX--;
-    updateLightboxImage();
+    const newIndex = CURRENT_INDEX - 1;
+    showImageAtIndex(newIndex, { direction: 'right' });
   }
 }
 
@@ -377,8 +544,13 @@ async function deleteCurrentImage() {
       SEEN_FILEIDS.delete(fid);
       renderGallery();
       toast('Image deleted');
-      CURRENT_INDEX = Math.max(0, Math.min(CURRENT_INDEX, IMAGE_URLS.length - 1));
-      closeLightbox();
+      // adjust index & close lightbox if needed
+      if (IMAGE_URLS.length === 0) {
+        closeLightbox();
+      } else {
+        CURRENT_INDEX = Math.max(0, Math.min(CURRENT_INDEX, IMAGE_URLS.length - 1));
+        showImageAtIndex(CURRENT_INDEX, {}); // refresh displayed image
+      }
     } else {
       toast((res && res.message) ? res.message : 'Delete failed');
     }
@@ -648,53 +820,7 @@ function capturePhoto() {
   c.toBlob(blob => { const file = new File([blob], `camera_${Date.now()}.png`, { type: 'image/png' }); uploadImage(file); }, 'image/png');
 }
 
-/* Install button & PWA handling */
-/* Creates a topbar install button (SVG) and wires beforeinstallprompt/appinstalled */
-function createInstallButtonIfNeeded() {
-  // Already present?
-  if (document.getElementById('installBtn')) return;
-  const topRight = document.querySelector('.top-right');
-  if (!topRight) return;
-
-  const btn = document.createElement('button');
-  btn.id = 'installBtn';
-  btn.className = 'control';
-  btn.style.display = 'none';
-  btn.setAttribute('aria-label', 'Install app');
-  btn.innerHTML = `<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M5 12l7-7 7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg><span style="margin-left:8px">Install</span>`;
-  topRight.insertBefore(btn, topRight.firstChild);
-
-  btn.addEventListener('click', async () => {
-    if (!deferredPrompt) { toast('Install not available'); return; }
-    try {
-      deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-      deferredPrompt = null;
-      btn.style.display = 'none';
-      if (choice.outcome === 'accepted') toast('Thanks — app installed');
-      else toast('Install dismissed');
-    } catch (e) {
-      console.error('Install prompt error', e);
-      toast('Install failed');
-    }
-  });
-}
-
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  createInstallButtonIfNeeded();
-  const btn = document.getElementById('installBtn');
-  if (btn) btn.style.display = 'inline-flex';
-});
-window.addEventListener('appinstalled', (e) => {
-  deferredPrompt = null;
-  const btn = document.getElementById('installBtn');
-  if (btn) btn.style.display = 'none';
-  toast('App installed');
-});
-
-/* Register service worker (non-invasive) */
+/* Service worker registration (non-invasive) */
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   try {
@@ -772,41 +898,51 @@ function bindUI() {
     if (e.key === 'ArrowLeft') prevImage();
   });
 
-  // Attach swipe handlers to both lightbox container and image
+  // Attach swipe handlers to the lightbox container only (prevents duplicate / conflicting events)
   const lb = document.getElementById('lightbox');
-  const lbImg = document.getElementById('lightboxImage');
 
   const attachSwipe = (el) => {
     if (!el) return;
     try { el.style.touchAction = 'pan-y'; } catch (e) {}
+
+    // If Pointer Events supported, use pointer handlers; otherwise use touch handlers.
     if (window.PointerEvent) {
       let pointerDown = false;
       let startX = 0, startY = 0;
-      el.addEventListener('pointerdown', (e) => { startX = e.clientX; startY = e.clientY; pointerDown = true; }, { passive: true });
+
+      el.addEventListener('pointerdown', (e) => {
+        // record start coords
+        startX = e.clientX;
+        startY = e.clientY;
+        pointerDown = true;
+      });
+
       el.addEventListener('pointerup', (e) => {
         if (!pointerDown) return;
         pointerDown = false;
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
         const absX = Math.abs(dx), absY = Math.abs(dy);
+        // require noticeable horizontal swipe and prefer horizontal movement
+        if (absX > 50 && absX > absY) { if (dx < 0) nextImage(); else prevImage(); }
+      });
+
+      el.addEventListener('pointercancel', () => { pointerDown = false; });
+    } else {
+      // Touch fallback (used only when PointerEvent is not available)
+      let tStartX = 0, tStartY = 0;
+      el.addEventListener('touchstart', (e) => { const t = e.touches && e.touches[0]; if (!t) return; tStartX = t.clientX; tStartY = t.clientY; }, { passive: true });
+      el.addEventListener('touchend', (e) => {
+        const t = e.changedTouches && e.changedTouches[0];
+        if (!t) return;
+        const dx = t.clientX - tStartX;
+        const dy = t.clientY - tStartY;
+        const absX = Math.abs(dx), absY = Math.abs(dy);
         if (absX > 50 && absX > absY) { if (dx < 0) nextImage(); else prevImage(); }
       }, { passive: true });
-      el.addEventListener('pointercancel', () => { pointerDown = false; }, { passive: true });
     }
-    // Touch fallback
-    let tStartX = 0, tStartY = 0;
-    el.addEventListener('touchstart', (e) => { const t = e.touches && e.touches[0]; if (!t) return; tStartX = t.clientX; tStartY = t.clientY; }, { passive: true });
-    el.addEventListener('touchend', (e) => {
-      const t = e.changedTouches && e.changedTouches[0];
-      if (!t) return;
-      const dx = t.clientX - tStartX;
-      const dy = t.clientY - tStartY;
-      const absX = Math.abs(dx), absY = Math.abs(dy);
-      if (absX > 50 && absX > absY) { if (dx < 0) nextImage(); else prevImage(); }
-    }, { passive: true });
   };
   attachSwipe(lb);
-  attachSwipe(lbImg);
 }
 
 /* TOPBAR visibility */
@@ -841,9 +977,6 @@ window.addEventListener('DOMContentLoaded', () => {
     if (img) img.style.touchAction = 'none';
   } catch (e) {}
 
-  // create install button placeholder (will be shown if beforeinstallprompt fires)
-  createInstallButtonIfNeeded();
-
   // register SW (non-invasive)
   registerServiceWorker();
 
@@ -856,5 +989,3 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('gallerySection')?.classList.add('hidden');
   }
 });
-
-
