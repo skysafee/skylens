@@ -120,7 +120,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
   display:block;
   background: linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.04) 50%, rgba(255,255,255,0.02) 100%);
   background-size: 200% 100%;
-  animation: shimmer 2s linear infinite;
+  animation: shimmer 1.2s linear infinite;
 }
 @keyframes shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
 
@@ -207,12 +207,12 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .lightbox-nav.prev { left: 10px; } .lightbox-nav.next { right: 10px; }
 @media (max-width:640px) { .lightbox-nav { display:none; } }
 
-/* note area inside lightbox (if used) 
+/* note area inside lightbox (if used) */
 .note-area { width:100%; margin-top:8px; display:flex; gap:12px; align-items:flex-end; }
 .note-area textarea { width:100%; min-height:64px; padding:10px; border-radius:8px; background:var(--surface); border:1px solid rgba(255,255,255,0.03); color:var(--text); resize:vertical; }
 .note-actions { display:flex; gap:8px; align-items:center; }
 
---------- Note modal (on-demand) ---------
+/* --------- Note modal (on-demand) --------- */
 #noteModal {
   position: fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index: 1405;
   background: rgba(0,0,0,0.6); padding:20px;
@@ -222,7 +222,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 }
 #noteModal #noteView { color:var(--muted); min-height:64px; white-space:pre-wrap; }
 #noteModal textarea { width:100%; min-height:120px; padding:10px; border-radius:8px; background:var(--surface); border:1px solid rgba(255,255,255,0.03); color:var(--text); }
-*/
+
 /* --------- Camera modal: full-screen, controls at bottom --------- */
 .modal, #cameraModal { position: fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:1400; background: rgba(0,0,0,0.6); }
 .camera-modal-inner {
@@ -240,7 +240,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .capture-btn { width:84px; height:84px; border-radius:50%; background:transparent; border: 2px solid rgba(255,255,255,0.9); display:flex; align-items:center; justify-content:center; box-shadow: 0 12px 30px rgba(0,0,0,0.5); }
 
 /* small flash overlay element */
-#videoFlash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .20s ease; z-index:30; }
+#videoFlash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .14s ease; z-index:30; }
 
 /* --------- Floating action button --------- */
 .fab-wrap { position: fixed; right: 20px; bottom: 28px; z-index: 1250; display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
