@@ -171,7 +171,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 /* Ensure action bar is pinned above the image and centered */
 .lightbox-actions {
   position: absolute;
-  bottom: 12px;
+  top: 450%;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1330;            /* above image & nav */
@@ -300,3 +300,4 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .small-spinner { width:18px; height:18px; border-radius:50%; border:2px solid rgba(255,255,255,0.08); border-top-color:var(--accent); animation: spin 0.9s linear infinite; display:inline-block; vertical-align:middle; }
 
 /* --------- End --------- */
+
