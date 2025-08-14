@@ -431,147 +431,193 @@ function closeLightbox() {
 }
 
 /* showImageAtIndex handles entry animations and slide transitions */
+/* showImageAtIndex — updated to use flex-centered layout and translate-based animations */
 function showImageAtIndex(index, options = {}) {
-  if (index < 0 || index >= IMAGE_URLS.length) return;
-  const wrap = document.querySelector('.lightbox-image-wrap');
-  if (!wrap) return;
-  if (lightboxAnimating) return;
-  lightboxAnimating = true;
+  if (typeof index !== 'number' || index < 0 || index >= IMAGE_URLS.length) {
+    console.warn('showImageAtIndex: invalid index', index);
+    return;
+  }
 
-  // start fallback timer to avoid the flag getting stuck
+  const wrap = document.querySelector('.lightbox-image-wrap');
+  if (!wrap) { console.warn('showImageAtIndex: missing wrapper'); return; }
+  if (lightboxAnimating) { console.warn('showImageAtIndex: animating, skip'); return; }
+
+  lightboxAnimating = true;
   if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
   _lightboxAnimTimer = setTimeout(() => {
     console.warn('lightbox animation timeout fallback - resetting state');
     lightboxAnimating = false;
     _lightboxAnimTimer = null;
-  }, 1600);
+  }, 3000);
 
-  const url = IMAGE_URLS[index].url;
+  const item = IMAGE_URLS[index] || {};
+  const url = item.url;
   const direction = options.direction || null;
   const sourceEl = options.sourceEl || null;
   const openZoom = !!options.openZoom;
-
   const existing = wrap.querySelector('img.lightbox-image');
 
-  // Create new image
-  const newImg = document.createElement('img');
-  newImg.className = 'lightbox-image';
-  newImg.alt = 'Lightbox image';
-  newImg.draggable = false;
-  // ensure new images sit below action UI
-  newImg.style.zIndex = '1320';
+  console.debug('showImageAtIndex', { index, url, direction, openZoom, existingPresent: !!existing });
 
-  // Define onLoaded BEFORE assigning src to avoid missed onload for cached images
-  const onLoaded = () => {
-    // clear fallback timer once animation completes
-    const clearAnimGuard = () => {
-      if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
-    };
-
-    // if opening with zoom-from-thumbnail
-    if (openZoom && sourceEl) {
-      try {
-        const thumbRect = sourceEl.getBoundingClientRect();
-        const wrapRect = wrap.getBoundingClientRect();
-
-        const finalCenterX = wrapRect.left + wrapRect.width / 2;
-        const finalCenterY = wrapRect.top + wrapRect.height / 2;
-        const thumbCenterX = thumbRect.left + thumbRect.width / 2;
-        const thumbCenterY = thumbRect.top + thumbRect.height / 2;
-        const deltaX = thumbCenterX - finalCenterX;
-        const deltaY = thumbCenterY - finalCenterY;
-
-        const finalMaxWidth = Math.min(window.innerWidth - 48, wrapRect.width || (window.innerWidth - 48));
-        const scale = Math.max(0.12, (thumbRect.width / Math.max(1, finalMaxWidth)));
-
-        newImg.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px)) scale(${scale})`;
-        newImg.classList.add('zooming');
-        wrap.appendChild(newImg);
-
-        // allow reflow then animate to center/scale(1)
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            newImg.style.transform = 'translate(-50%, -50%) scale(1)';
-            newImg.style.opacity = '1';
-          });
-        });
-
-        const onEnd = (ev) => {
-          newImg.removeEventListener('transitionend', onEnd);
-          newImg.classList.add('visible');
-          newImg.classList.remove('zooming');
-          if (existing) existing.remove();
-          clearAnimGuard();
-          lightboxAnimating = false;
-          CURRENT_INDEX = index;
-        };
-        newImg.addEventListener('transitionend', onEnd);
-        return;
-      } catch (err) {
-        console.warn('zoom-from-thumb failed, falling back', err);
-      }
-    }
-
-    // Slide transition when existing image present
-    if (existing && direction) {
-      if (direction === 'left') {
-        newImg.classList.add('enter-from-right');
-      } else {
-        newImg.classList.add('enter-from-left');
-      }
-      wrap.appendChild(newImg);
-
-      requestAnimationFrame(() => {
-        existing.classList.add(direction === 'left' ? 'exit-to-left' : 'exit-to-right');
-        existing.classList.remove('visible');
-
-        newImg.classList.remove('enter-from-right', 'enter-from-left');
-        newImg.classList.add('visible');
-
-        const cleanup = (ev) => {
-          newImg.removeEventListener('transitionend', cleanup);
-          if (existing && existing.parentNode) existing.remove();
-          if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
-          lightboxAnimating = false;
-          CURRENT_INDEX = index;
-        };
-        newImg.addEventListener('transitionend', cleanup);
-      });
-      return;
-    }
-
-    // No existing image — simple fade/appear
-    newImg.style.opacity = '0';
-    wrap.appendChild(newImg);
-    requestAnimationFrame(() => {
-      newImg.style.opacity = '1';
-      newImg.classList.add('visible');
-    });
-    const onEndNoExisting = () => {
-      newImg.removeEventListener('transitionend', onEndNoExisting);
-      if (existing && existing.parentNode) existing.remove();
-      if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
-      lightboxAnimating = false;
-      CURRENT_INDEX = index;
-    };
-    newImg.addEventListener('transitionend', onEndNoExisting);
-  };
-
-  newImg.onload = () => setTimeout(onLoaded, 8);
-  newImg.onerror = () => {
-    toast('Failed to load image');
-    // ensure flag resets
+  if (!url) {
+    console.error('showImageAtIndex: missing url', item);
+    toast('Image not available');
     if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
     lightboxAnimating = false;
+    return;
+  }
+
+  // small spinner to show while the image loads
+  const spinner = document.createElement('div');
+  spinner.className = 'small-spinner';
+  spinner.style.margin = '10px auto';
+  wrap.appendChild(spinner);
+
+  // Create image element
+  const newImg = document.createElement('img');
+  newImg.className = 'lightbox-image';
+  newImg.alt = item.alt || 'Lightbox image';
+  newImg.draggable = false;
+  newImg.style.opacity = '0';
+  // ensure transitions are present
+  newImg.style.transition = 'transform .42s cubic-bezier(.2,.9,.25,1), opacity .32s ease';
+
+  // Transition end cleanup (common)
+  const finalize = () => {
+    if (spinner.parentNode) spinner.remove();
+    if (existing && existing.parentNode) existing.remove();
+    if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
+    lightboxAnimating = false;
+    CURRENT_INDEX = index;
   };
 
-  // finally assign src (after handlers setup)
-  newImg.src = url;
+  // Error handler
+  newImg.onerror = (ev) => {
+    console.error('Lightbox image failed to load', url, ev);
+    if (spinner.parentNode) spinner.remove();
+    if (newImg.parentNode) newImg.parentNode.removeChild(newImg);
+    if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
+    lightboxAnimating = false;
+    toast('Failed to load image (see console)');
+  };
 
-  // if already cached
-  if (newImg.complete && newImg.naturalWidth) {
-    setTimeout(onLoaded, 8);
+  // When image loads, perform the appropriate animation
+  newImg.onload = () => {
+    try {
+      // ----- Zoom-from-thumb -----
+      if (openZoom && sourceEl) {
+        try {
+          const thumbRect = sourceEl.getBoundingClientRect();
+          const wrapRect = wrap.getBoundingClientRect();
+
+          // compute pixel deltas: how far the thumb center is from the wrap center
+          const thumbCenterX = thumbRect.left + thumbRect.width / 2;
+          const thumbCenterY = thumbRect.top + thumbRect.height / 2;
+          const wrapCenterX = wrapRect.left + wrapRect.width / 2;
+          const wrapCenterY = wrapRect.top + wrapRect.height / 2;
+          const deltaX = thumbCenterX - wrapCenterX;
+          const deltaY = thumbCenterY - wrapCenterY;
+
+          // scale estimate: thumb width to final visible width
+          const finalMaxWidth = Math.min(window.innerWidth - 48, wrapRect.width || (window.innerWidth - 48));
+          const scale = Math.max(0.08, (thumbRect.width / Math.max(1, finalMaxWidth)));
+
+          // set starting transform: translate by delta px and scale down
+          newImg.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(${scale})`;
+          newImg.style.opacity = '0';
+          // append and force reflow
+          if (!newImg.parentNode) wrap.appendChild(newImg);
+          void newImg.offsetWidth;
+          // animate to center (translate to 0,0 and scale 1)
+          requestAnimationFrame(() => {
+            newImg.style.transform = 'translate(0px, 0px) scale(1)';
+            newImg.style.opacity = '1';
+          });
+          // wait for transition end then finalize
+          const onEndZoom = (ev) => {
+            newImg.removeEventListener('transitionend', onEndZoom);
+            newImg.classList.add('visible');
+            finalize();
+          };
+          newImg.addEventListener('transitionend', onEndZoom);
+          return;
+        } catch (errZoom) {
+          console.warn('zoom-from-thumb failed, falling back', errZoom);
+        }
+      }
+
+      // ----- Slide transitions (existing) -----
+      if (existing && direction) {
+        // set starting transform for new image
+        if (!newImg.parentNode) wrap.appendChild(newImg);
+        if (direction === 'left') {
+          newImg.classList.add('enter-from-right');
+        } else {
+          newImg.classList.add('enter-from-left');
+        }
+        // force reflow then animate both
+        void newImg.offsetWidth;
+        requestAnimationFrame(() => {
+          // move old out
+          if (direction === 'left') {
+            existing.classList.add('exit-to-left');
+          } else {
+            existing.classList.add('exit-to-right');
+          }
+          existing.classList.remove('visible');
+
+          // bring new in
+          newImg.classList.remove('enter-from-right', 'enter-from-left');
+          newImg.classList.add('visible');
+
+          const onEndSlide = (ev) => {
+            newImg.removeEventListener('transitionend', onEndSlide);
+            finalize();
+          };
+          newImg.addEventListener('transitionend', onEndSlide);
+        });
+        return;
+      }
+
+      // ----- Default: simple fade-in -----
+      if (!newImg.parentNode) wrap.appendChild(newImg);
+      // initial tiny scale to allow smooth pop
+      newImg.style.transform = 'translate(0px, 0px) scale(0.98)';
+      newImg.style.opacity = '0';
+      void newImg.offsetWidth;
+      requestAnimationFrame(() => {
+        newImg.style.transform = 'translate(0px, 0px) scale(1)';
+        newImg.style.opacity = '1';
+      });
+      const onEndDefault = () => {
+        newImg.removeEventListener('transitionend', onEndDefault);
+        finalize();
+      };
+      newImg.addEventListener('transitionend', onEndDefault);
+
+    } catch (err) {
+      console.error('onload animation error', err);
+      if (spinner.parentNode) spinner.remove();
+      if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
+      lightboxAnimating = false;
+    }
+  };
+
+  // Append the image element early so layout / transforms are predictable
+  if (!newImg.parentNode) wrap.appendChild(newImg);
+
+  // Assign src last so onload triggers consistently
+  try {
+    newImg.src = url;
+  } catch (errSrc) {
+    console.error('Failed to set image src', errSrc, url);
+    if (newImg.parentNode) newImg.parentNode.removeChild(newImg);
+    if (spinner.parentNode) spinner.remove();
+    if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
+    lightboxAnimating = false;
   }
+
+  // If cached, onload will have fired or will fire synchronously with handlers attached
 }
 
 async function nextImage() {
@@ -1090,3 +1136,4 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('gallerySection')?.classList.add('hidden');
   }
 });
+
