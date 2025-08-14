@@ -1,139 +1,143 @@
-// service-worker.js
-const SW_VERSION = 'v20250812.3';
-const SHELL_CACHE = 'skylens-shell-' + SW_VERSION;
-const RUNTIME_CACHE = 'skylens-runtime-' + SW_VERSION;
+// Simple but robust service worker for SkyLens
+// - caches core shell on install
+// - serves static assets from cache-first
+// - uses network-first for navigation (so SPA updates when online)
+// - skips caching the external Apps Script endpoint (SCRIPT_URL)
+// - notifies clients on activate with a SKY_UPDATE message
 
-const PRECACHE_URLS = [
-  './',
-  'index.html',
-  'style.css',
-  'script.js',
-  'manifest.json',
-  'offline.html',
-  'iconlensnew192.png',
-  'iconlensnew512.png'
+const CACHE_VERSION = 'skylens-v2';
+const STATIC_CACHE = `${CACHE_VERSION}-static`;
+const IMAGE_CACHE = `${CACHE_VERSION}-images`;
+const CORE_ASSETS = [
+  '/',                 // navigation fallback
+  '/index.html',
+  '/style.css',
+  '/script.js',
+  '/iconlensnew192.png',
+  '/iconlensnew512.png'
 ];
 
-function fetchWithTimeout(request, ms = 7000) {
-  return Promise.race([
-    fetch(request),
-    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))
-  ]);
-}
-
-async function limitCacheSize(cacheName, maxItems = 300) {
-  try {
-    const cache = await caches.open(cacheName);
-    const keys = await cache.keys();
-    if (keys.length > maxItems) {
-      await cache.delete(keys[0]);
-      await limitCacheSize(cacheName, maxItems);
-    }
-  } catch (e) { /* ignore */ }
-}
+// If you change SCRIPT_URL in your app, keep it in sync here so we don't cache API responses
+const APPS_SCRIPT_ORIGIN = (new URL(self.registration.scope)).origin; // fallback: same origin
+// You likely want to avoid caching cross-origin Apps Script requests; handle by domain detection
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
   event.waitUntil(
-    caches.open(SHELL_CACHE)
-      .then(cache => cache.addAll(PRECACHE_URLS))
-      .catch(err => console.error('[SW] Precache failed:', err))
+    caches.open(STATIC_CACHE)
+      .then(cache => cache.addAll(CORE_ASSETS))
+      .then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(keys.map(k => {
-      if (k !== SHELL_CACHE && k !== RUNTIME_CACHE) return caches.delete(k);
-      return Promise.resolve();
-    }));
-    await self.clients.claim();
-    const clients = await self.clients.matchAll();
-    clients.forEach(c => c.postMessage({ type: 'SKY_UPDATE', version: SW_VERSION }));
-  })());
+  event.waitUntil(
+    (async () => {
+      // delete old caches
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => {
+        if (k !== STATIC_CACHE && k !== IMAGE_CACHE) return caches.delete(k);
+        return Promise.resolve();
+      }));
+      await self.clients.claim();
+
+      // Notify clients that a new SW is active (useful to show "App updated")
+      const clients = await self.clients.matchAll({ includeUncontrolled: true });
+      for (const client of clients) {
+        client.postMessage({ type: 'SKY_UPDATE', version: CACHE_VERSION });
+      }
+    })()
+  );
 });
+
+function isNavigationRequest(request) {
+  return request.mode === 'navigate' ||
+         (request.method === 'GET' && request.headers.get('accept') && request.headers.get('accept').includes('text/html'));
+}
+
+// A small helper: network-first for navigation so users see the latest app when online
+async function networkFirst(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  try {
+    const response = await fetch(request);
+    if (response && response.ok) {
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (err) {
+    const cached = await cache.match(request);
+    return cached || Response.error();
+  }
+}
+
+// Cache-first for static assets & images
+async function cacheFirst(request, cacheName = STATIC_CACHE) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  try {
+    const resp = await fetch(request);
+    if (resp && resp.ok) {
+      // for images store in image cache for separate tracking
+      if (cacheName === IMAGE_CACHE) await cache.put(request, resp.clone());
+      else await cache.put(request, resp.clone());
+    }
+    return resp;
+  } catch (e) {
+    return cached || Response.error();
+  }
+}
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  if (req.method !== 'GET') return;
-
   const url = new URL(req.url);
-  const isSameOrigin = url.origin === self.location.origin;
 
-  // Navigation: network-first, fallback offline page
-  if (req.mode === 'navigate') {
-    event.respondWith((async () => {
-      try {
-        const networkResp = await fetchWithTimeout(req, 7000);
-        // update cached shell root
-        caches.open(SHELL_CACHE).then(cache => cache.put('./', networkResp.clone()).catch(()=>{}));
-        return networkResp;
-      } catch (err) {
-        const cached = await caches.match(req);
-        if (cached) return cached;
-        const offline = await caches.match('offline.html');
-        if (offline) return offline;
-        return new Response('Offline', { status: 503, statusText: 'Offline' });
-      }
-    })());
-    return;
-  }
+  // Avoid interfering with browser devtools / extension requests
+  if (url.protocol.startsWith('chrome-extension')) return;
 
-  // Static assets (css/js/manifest/icons) -> cache-first, background refresh
-  if (isSameOrigin && (req.destination === 'style' || req.destination === 'script' || req.destination === 'manifest' ||
-      req.url.endsWith('.png') || req.url.endsWith('.json') || req.url.endsWith('.svg'))) {
+  // Don't cache external AppsScript / API calls (detect by hostname mismatch)
+  // If your SCRIPT_URL is on a known host, you can explicitly skip that host.
+  const isCrossOriginApi = (url.origin !== self.location.origin) && /script\.google\.com|googleapis\.com/.test(url.hostname + url.pathname);
 
+  // Navigation (HTML) -> network-first
+  if (isNavigationRequest(req)) {
     event.respondWith(
-      caches.match(req).then(cached => {
-        if (cached) {
-          fetch(req).then(resp => { if (resp && resp.ok) caches.open(SHELL_CACHE).then(c => c.put(req, resp.clone())); }).catch(()=>{});
-          return cached;
-        }
-        return fetch(req).then(resp => {
-          if (resp && resp.ok) caches.open(SHELL_CACHE).then(c => c.put(req, resp.clone()));
-          return resp;
-        }).catch(() => caches.match('offline.html'));
-      })
+      networkFirst(req).then(resp => {
+        // If networkFirst returned a Response, return it; otherwise fallback to cached index.html
+        if (resp && resp.ok) return resp;
+        return caches.match('/index.html');
+      }).catch(() => caches.match('/index.html'))
     );
     return;
   }
 
-  // Images/media -> runtime cache (cache-first then network)
-  if (req.destination === 'image' || req.url.match(/\.(png|jpe?g|gif|webp|avif)$/i)) {
-    event.respondWith((async () => {
-      const cache = await caches.open(RUNTIME_CACHE);
-      const cached = await cache.match(req);
-      if (cached) return cached;
-      try {
-        const resp = await fetch(req);
-        if (resp && resp.ok) {
-          cache.put(req, resp.clone()).catch(()=>{});
-          limitCacheSize(RUNTIME_CACHE, 400);
-        }
-        return resp;
-      } catch (e) {
-        return caches.match('offline.html');
-      }
-    })());
+  // Static assets on same origin: cache-first
+  if (req.method === 'GET' && req.destination && (req.destination === 'style' || req.destination === 'script' || req.destination === '' || req.destination === 'document' || req.destination === 'manifest')) {
+    event.respondWith(cacheFirst(req, STATIC_CACHE));
     return;
   }
 
-  // Default: stale-while-revalidate
-  event.respondWith((async () => {
-    const cache = await caches.open(RUNTIME_CACHE);
-    const cached = await cache.match(req);
-    const networkPromise = fetch(req).then(resp => {
-      if (resp && resp.ok) cache.put(req, resp.clone());
-      return resp;
-    }).catch(() => null);
-    return cached || (await networkPromise) || (await caches.match('offline.html'));
-  })());
+  // Images: cache-first with separate image cache
+  if (req.destination === 'image' || /\.(png|jpg|jpeg|gif|webp|svg)$/.test(url.pathname)) {
+    event.respondWith(cacheFirst(req, IMAGE_CACHE));
+    return;
+  }
+
+  // If it's a cross-origin API call (e.g., your Apps Script), just do network-only (don't cache)
+  if (isCrossOriginApi) {
+    event.respondWith(fetch(req));
+    return;
+  }
+
+  // Default: try cache, fallback to network
+  event.respondWith(
+    caches.match(req).then(cached => cached || fetch(req).catch(() => cached))
+  );
 });
 
+// Listen to messages from the page (common pattern: page can send {type: 'SKIP_WAITING'} to activate new SW immediately)
 self.addEventListener('message', (event) => {
-  if (!event.data) return;
-  if (event.data.type === 'SKY_FORCE_UPDATE') {
+  const data = event.data || {};
+  if (data && data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
