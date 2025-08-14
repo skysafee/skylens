@@ -1,5 +1,7 @@
 // =========================
 // Skylens - script.js (grid layout, fixed lightbox ordering, slide + zoom transitions)
+// UPDATED: fixes for lightbox z-index, animation guard fallback, safer parsing,
+// incremental gallery rendering, drag overlay checks, delete confirmation, and more.
 // =========================
 
 /* CONFIG */
@@ -10,7 +12,7 @@ const noteLoading = {};
 
 /* STATE */
 let CURRENT_USER = localStorage.getItem('CURRENT_USER') || null;
-let SKYSAFE_TOKEN = localStorage.getItem('skySafeeToken') || null;
+let SKYSAFE_TOKEN = localStorage.getItem('skySafeeToken') || null; // note: kept original name as requested
 let IMAGE_URLS = []; // canonical array of images in display order (newest-first)
 let CURRENT_INDEX = -1;
 let CURRENT_THEME = localStorage.getItem('theme') || 'default';
@@ -28,6 +30,7 @@ let cameraStarting = false;
 
 /* Lightbox animation guard */
 let lightboxAnimating = false;
+let _lightboxAnimTimer = null;
 
 /* HELPERS */
 function toast(msg, timeout = 2200) {
@@ -40,20 +43,21 @@ function toast(msg, timeout = 2200) {
 }
 
 function forceLogoutLocal(reasonMsg) {
+  // clear local state but do NOT reload here — caller (logoutUser) will reload if desired
   localStorage.removeItem('CURRENT_USER');
   localStorage.removeItem('skySafeeToken');
   CURRENT_USER = null; SKYSAFE_TOKEN = null;
   IMAGE_URLS = [];
   SEEN_FILEIDS.clear();
-  document.getElementById('gallery')?.replaceChildren();
+  const gallery = document.getElementById('gallery');
+  if (gallery) gallery.replaceChildren();
   updateTopbar();
   document.getElementById('authSection')?.classList.remove('hidden');
   document.getElementById('gallerySection')?.classList.add('hidden');
   if (reasonMsg) toast(reasonMsg);
-  window.location.reload(true);
 }
 
-/* Robust Apps Script caller */
+/* Robust Apps Script caller with safer parsing + improved error messaging */
 async function callAppsScript(payload) {
   try {
     const res = await fetch(SCRIPT_URL, {
@@ -63,7 +67,14 @@ async function callAppsScript(payload) {
     });
     const text = await res.text();
     if (!text) throw new Error('Empty response from server');
-    const data = JSON.parse(text);
+    // Try parse and capture raw text on failure for debugging
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      console.error('callAppsScript: failed to parse JSON response', text);
+      throw new Error('Unexpected server response (non-JSON). See console for details.');
+    }
     if (data && data.success === false && /unauthoriz/i.test(String(data.message || ''))) {
       forceLogoutLocal('Session expired — please sign in again');
       throw new Error('Unauthorized');
@@ -78,16 +89,29 @@ async function callAppsScript(payload) {
   }
 }
 
-/* UI disable/enable */
+/* UI disable/enable — avoid disabling native <label for="imageInput"> used for file picker */
 function setAllButtonsDisabled(disabled) {
-  const selector = 'button, input[type="button"], input[type="submit"], .fab-option, .icon-btn, .link, .control';
-  document.querySelectorAll(selector).forEach(el => {
+  const selector = 'button, input[type="button"], input[type="submit"], .fab-option, .icon-btn, .link, .control, label';
+  const nodes = document.querySelectorAll(selector);
+  for (const el of nodes) {
     try {
+      // Preserve file-picker label functionality — if this label targets the file input, don't disable it
+      if (disabled) {
+        if (el.tagName === 'LABEL' && el.getAttribute('for') === 'imageInput') {
+          // leave it interactive so users can still open file picker
+          continue;
+        }
+      }
+
       if ('disabled' in el) el.disabled = !!disabled;
+
       if (disabled) {
         el.classList.add('disabled');
         el.setAttribute('aria-disabled', 'true');
-        el.style.pointerEvents = 'none';
+        // avoid globally removing pointer events for labels that need to remain interactive
+        if (!(el.tagName === 'LABEL' && el.getAttribute('for') === 'imageInput')) {
+          el.style.pointerEvents = 'none';
+        }
         el.style.opacity = '0.6';
         el.style.cursor = 'not-allowed';
       } else {
@@ -97,8 +121,10 @@ function setAllButtonsDisabled(disabled) {
         el.style.opacity = '';
         el.style.cursor = '';
       }
-    } catch (e) {}
-  });
+    } catch (e) {
+      // swallow individual element errors
+    }
+  }
 }
 function disableUI(){ setAllButtonsDisabled(true); }
 function enableUI(){ setAllButtonsDisabled(false); }
@@ -122,25 +148,12 @@ function initObserver() {
   }
 }
 
-/* Render gallery from canonical IMAGE_URLS array
-   This ensures DOM order always matches the array so lightbox indices are stable.
-*/
-function renderGallery() {
-  const container = document.getElementById('gallery');
-  if (!container) return;
-  container.replaceChildren();
-  const frag = document.createDocumentFragment();
-  IMAGE_URLS.forEach(obj => {
-    frag.appendChild(createGalleryItem(obj));
-  });
-  container.appendChild(frag);
-}
-
-/* Create one tile (doesn't touch IMAGE_URLS) */
+/* Create one tile (returns null for invalid objects) */
 function createGalleryItem(obj) {
+  if (!obj || !obj.url) return null; // skip invalid items (prevents empty placeholders)
   const div = document.createElement('div');
   div.className = 'gallery-item';
-  if (obj.fileId) div.dataset.fileid = obj.fileId;
+  if (obj.fileId) div.dataset.fileid = String(obj.fileId);
 
   const sk = document.createElement('div');
   sk.className = 'skeleton';
@@ -152,6 +165,7 @@ function createGalleryItem(obj) {
   img.loading = 'lazy';
   img.draggable = false;
 
+  // attach handlers BEFORE assigning src (observer will assign src later)
   img.onload = () => {
     div.classList.add('loaded');
     if (sk.parentNode) sk.remove();
@@ -164,8 +178,10 @@ function createGalleryItem(obj) {
     broken.innerHTML = `<div>Failed to load<br><button class="btn retry-btn">Retry</button></div>`;
     const btn = broken.querySelector('.retry-btn');
     btn.addEventListener('click', () => {
-      img.dataset.src && (img.src = img.dataset.src + '?r=' + Date.now());
-      if (imgObserver) imgObserver.observe(img);
+      if (img.dataset.src) {
+        img.src = img.dataset.src + '?r=' + Date.now();
+        if (imgObserver) imgObserver.observe(img);
+      }
     });
     div.appendChild(broken);
   };
@@ -184,6 +200,47 @@ function createGalleryItem(obj) {
   div.tabIndex = 0;
 
   return div;
+}
+
+/* Render gallery from canonical IMAGE_URLS array using incremental updates
+   Reuses existing DOM nodes by fileId where possible to avoid full re-render churn.
+*/
+function renderGallery() {
+  const container = document.getElementById('gallery');
+  if (!container) return;
+
+  const existingMap = new Map();
+  container.querySelectorAll('.gallery-item').forEach(el => {
+    const fid = el.dataset.fileid;
+    if (fid) existingMap.set(String(fid), el);
+  });
+
+  const frag = document.createDocumentFragment();
+  const toKeep = new Set();
+
+  for (const obj of IMAGE_URLS) {
+    // createGalleryItem can return null for invalid objects
+    if (!obj || !obj.fileId) continue;
+    const fid = String(obj.fileId);
+    toKeep.add(fid);
+    if (existingMap.has(fid)) {
+      // move existing node into fragment (keeps its image/focus state)
+      frag.appendChild(existingMap.get(fid));
+      existingMap.delete(fid);
+    } else {
+      const node = createGalleryItem(obj);
+      if (node) frag.appendChild(node);
+    }
+  }
+
+  // Remove leftover nodes (those not present in current IMAGE_URLS)
+  for (const [oldFid, oldEl] of existingMap) {
+    if (oldEl && oldEl.parentNode) oldEl.parentNode.removeChild(oldEl);
+  }
+
+  // Clear and append frag (this moves nodes in-place)
+  container.replaceChildren();
+  container.appendChild(frag);
 }
 
 /* Load paginated images and update canonical IMAGE_URLS
@@ -206,19 +263,20 @@ async function loadGallery(start = 0, limit = INITIAL_LOAD_COUNT) {
     // server returns images array newest-first
     const images = Array.isArray(res.images) ? res.images : [];
 
-    // Filter duplicates and preserve order
+    // Filter duplicates and preserve order; skip items lacking fileId/url to avoid unopenable tiles
     const newImages = [];
     for (const img of images) {
       const fid = String(img.fileId || '');
-      if (fid && SEEN_FILEIDS.has(fid)) continue;
-      if (fid) SEEN_FILEIDS.add(fid);
+      if (!fid) continue; // skip items without fileId
+      if (SEEN_FILEIDS.has(fid)) continue;
+      SEEN_FILEIDS.add(fid);
       newImages.push(img);
     }
 
-    // Append (older items come later) — server gives newest-first, appending keeps newest-first at beginning on initial load
+    // Append older items to the end of IMAGE_URLS (we keep newest-first at start)
     IMAGE_URLS = IMAGE_URLS.concat(newImages);
 
-    // Render the gallery DOM from canonical array (ensures stable ordering)
+    // Render incrementally (reuses existing nodes)
     renderGallery();
 
     // Pagination bookkeeping
@@ -245,7 +303,7 @@ async function loadGallery(start = 0, limit = INITIAL_LOAD_COUNT) {
 
 /* Upload flow: optimistic skeleton then insert at the top (newest-first) */
 async function uploadImage(file) {
-  if (!file || !CURRENT_USER || !SKYSAFE_TOKEN) return;
+  if (!file || !CURRENT_USER || !SKYSAFE_TOKEN) { toast('Not signed in'); return; }
   if (loading.upload) return;
   const allowed = ['image/jpeg','image/png','image/gif','image/webp'];
   const max = 5 * 1024 * 1024;
@@ -264,15 +322,15 @@ async function uploadImage(file) {
       const dataUrl = e.target.result;
       const res = await callAppsScript({ action: 'uploadToDrive', dataUrl, filename: file.name, token: SKYSAFE_TOKEN });
       if (res && res.success) {
+        // On success remove placeholder and add new image at top (newest-first)
         placeholder.remove();
         const newImage = { date: (new Date()).toISOString(), url: res.url || '', fileId: res.fileId || '', note: '' };
-        // If new image and not seen, add to top (newest-first)
         if (newImage.fileId && !SEEN_FILEIDS.has(newImage.fileId)) {
           SEEN_FILEIDS.add(newImage.fileId);
           IMAGE_URLS.unshift(newImage);
           renderGallery();
         } else {
-          // fallback: reload gallery
+          // fallback: refresh a small page
           IMAGE_URLS = [];
           SEEN_FILEIDS.clear();
           document.getElementById('gallery').innerHTML = '';
@@ -299,6 +357,7 @@ async function uploadImage(file) {
 function makeSkeletonItem() {
   const div = document.createElement('div');
   div.className = 'gallery-item';
+  div.dataset.uploadPlaceholder = '1'; // mark optimistic placeholder
   const sk = document.createElement('div');
   sk.className = 'skeleton';
   div.appendChild(sk);
@@ -317,6 +376,15 @@ function openLightbox(index, sourceEl) {
   document.getElementById('gallery')?.classList.add('gallery-dimmed');
 
   lb.classList.remove('hidden');
+  // ensure actions sit above images (JS safety-net for overlapping)
+  const actions = lb.querySelector('.lightbox-actions');
+  if (actions) {
+    actions.style.position = 'relative';
+    actions.style.zIndex = '1360';
+    // ensure clickable
+    actions.style.pointerEvents = 'auto';
+  }
+
   // toggle visible state for fade-in
   requestAnimationFrame(() => lb.classList.add('visible'));
 
@@ -327,15 +395,15 @@ function openLightbox(index, sourceEl) {
 function openLightboxByFileId(fileId, sourceEl) {
   const idx = IMAGE_URLS.findIndex(i => String(i.fileId || '') === String(fileId || ''));
   if (idx === -1) {
-    // If not present, refresh gallery then try open again
-    IMAGE_URLS = [];
-    SEEN_FILEIDS.clear();
-    document.getElementById('gallery').innerHTML = '';
-    NEXT_START = 0; HAS_MORE = true;
-    loadGallery(0, INITIAL_LOAD_COUNT).then(() => {
-      const newIdx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fileId || ''));
-      if (newIdx !== -1) openLightbox(newIdx, sourceEl);
-    });
+    // try loading more pages (do not clear current state) and attempt again once loaded
+    if (!loading.gallery && HAS_MORE) {
+      loadGallery(NEXT_START, LOAD_MORE_COUNT).then(() => {
+        const newIdx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fileId || ''));
+        if (newIdx !== -1) openLightbox(newIdx, sourceEl);
+      }).catch(() => {
+        // no-op
+      });
+    }
     return;
   }
   openLightbox(idx, sourceEl);
@@ -357,21 +425,26 @@ function closeLightbox() {
     const wrap = document.querySelector('.lightbox-image-wrap');
     if (wrap) wrap.replaceChildren();
     CURRENT_INDEX = -1;
+    // clear any lingering animation timer
+    if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; lightboxAnimating = false; }
   }, 320);
 }
 
-/* showImageAtIndex handles entry animations and slide transitions
-   options:
-    - sourceEl: thumbnail element (for zoom-open)
-    - openZoom: boolean (perform zoom-from-thumb)
-    - direction: 'left' or 'right' for slide transitions (optional)
-*/
+/* showImageAtIndex handles entry animations and slide transitions */
 function showImageAtIndex(index, options = {}) {
   if (index < 0 || index >= IMAGE_URLS.length) return;
   const wrap = document.querySelector('.lightbox-image-wrap');
   if (!wrap) return;
   if (lightboxAnimating) return;
   lightboxAnimating = true;
+
+  // start fallback timer to avoid the flag getting stuck
+  if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
+  _lightboxAnimTimer = setTimeout(() => {
+    console.warn('lightbox animation timeout fallback - resetting state');
+    lightboxAnimating = false;
+    _lightboxAnimTimer = null;
+  }, 1600);
 
   const url = IMAGE_URLS[index].url;
   const direction = options.direction || null;
@@ -385,40 +458,37 @@ function showImageAtIndex(index, options = {}) {
   newImg.className = 'lightbox-image';
   newImg.alt = 'Lightbox image';
   newImg.draggable = false;
-  newImg.src = url;
+  // ensure new images sit below action UI
+  newImg.style.zIndex = '1320';
 
-  // When new image loads, perform animation
+  // Define onLoaded BEFORE assigning src to avoid missed onload for cached images
   const onLoaded = () => {
+    // clear fallback timer once animation completes
+    const clearAnimGuard = () => {
+      if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
+    };
+
     // if opening with zoom-from-thumbnail
     if (openZoom && sourceEl) {
-      // compute thumbnail center and lightbox final center & size
       try {
         const thumbRect = sourceEl.getBoundingClientRect();
         const wrapRect = wrap.getBoundingClientRect();
 
-        // final target center in viewport coordinates
         const finalCenterX = wrapRect.left + wrapRect.width / 2;
         const finalCenterY = wrapRect.top + wrapRect.height / 2;
-
-        // thumb center
         const thumbCenterX = thumbRect.left + thumbRect.width / 2;
         const thumbCenterY = thumbRect.top + thumbRect.height / 2;
-
-        // compute delta in viewport coords
         const deltaX = thumbCenterX - finalCenterX;
         const deltaY = thumbCenterY - finalCenterY;
 
-        // scale estimate: ratio of thumb width to (wrap's available width * .9) - conservative
-        const finalMaxWidth = Math.min(window.innerWidth - 48, wrapRect.width);
-        const scale = Math.max(0.12, (thumbRect.width / finalMaxWidth));
+        const finalMaxWidth = Math.min(window.innerWidth - 48, wrapRect.width || (window.innerWidth - 48));
+        const scale = Math.max(0.12, (thumbRect.width / Math.max(1, finalMaxWidth)));
 
-        // apply initial transform that places the new image over the thumbnail
         newImg.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px)) scale(${scale})`;
         newImg.classList.add('zooming');
         wrap.appendChild(newImg);
 
-        // force reflow then animate to center/scale(1)
-        // small delay ensures browser registers initial transform
+        // allow reflow then animate to center/scale(1)
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             newImg.style.transform = 'translate(-50%, -50%) scale(1)';
@@ -426,26 +496,24 @@ function showImageAtIndex(index, options = {}) {
           });
         });
 
-        // when transition ends, finalize
         const onEnd = (ev) => {
           newImg.removeEventListener('transitionend', onEnd);
           newImg.classList.add('visible');
           newImg.classList.remove('zooming');
           if (existing) existing.remove();
+          clearAnimGuard();
           lightboxAnimating = false;
           CURRENT_INDEX = index;
         };
         newImg.addEventListener('transitionend', onEnd);
         return;
       } catch (err) {
-        // fallback to normal entry if anything fails
         console.warn('zoom-from-thumb failed, falling back', err);
       }
     }
 
-    // If this is a slide transition (existing image present)
+    // Slide transition when existing image present
     if (existing && direction) {
-      // set initial state for newImg (enter from left/right)
       if (direction === 'left') {
         newImg.classList.add('enter-from-right');
       } else {
@@ -453,21 +521,17 @@ function showImageAtIndex(index, options = {}) {
       }
       wrap.appendChild(newImg);
 
-      // ensure reflow, then move both
       requestAnimationFrame(() => {
-        // old image exits (to left for next, to right for prev)
         existing.classList.add(direction === 'left' ? 'exit-to-left' : 'exit-to-right');
         existing.classList.remove('visible');
 
-        // new image becomes visible (transitions to center)
         newImg.classList.remove('enter-from-right', 'enter-from-left');
         newImg.classList.add('visible');
 
-        // after animation remove old image
         const cleanup = (ev) => {
-          // wait until transition ends on newImg (or existing)
           newImg.removeEventListener('transitionend', cleanup);
           if (existing && existing.parentNode) existing.remove();
+          if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
           lightboxAnimating = false;
           CURRENT_INDEX = index;
         };
@@ -486,16 +550,26 @@ function showImageAtIndex(index, options = {}) {
     const onEndNoExisting = () => {
       newImg.removeEventListener('transitionend', onEndNoExisting);
       if (existing && existing.parentNode) existing.remove();
+      if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
       lightboxAnimating = false;
       CURRENT_INDEX = index;
     };
     newImg.addEventListener('transitionend', onEndNoExisting);
   };
 
-  // If image already cached or loads instantly, onload may not fire — use complete check
   newImg.onload = () => setTimeout(onLoaded, 8);
+  newImg.onerror = () => {
+    toast('Failed to load image');
+    // ensure flag resets
+    if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
+    lightboxAnimating = false;
+  };
+
+  // finally assign src (after handlers setup)
+  newImg.src = url;
+
+  // if already cached
   if (newImg.complete && newImg.naturalWidth) {
-    // allow a tiny tick so CSS classes exist
     setTimeout(onLoaded, 8);
   }
 }
@@ -517,7 +591,6 @@ async function nextImage() {
       showImageAtIndex(newIndex, { direction: 'left' });
     }
   }
-  // else nothing
 }
 function prevImage() {
   if (lightboxAnimating) return;
@@ -527,12 +600,16 @@ function prevImage() {
   }
 }
 
-/* DELETE */
+/* DELETE with confirmation */
 async function deleteCurrentImage() {
   if (loading.delete) return;
   if (CURRENT_INDEX < 0 || !IMAGE_URLS[CURRENT_INDEX]) return;
   const item = IMAGE_URLS[CURRENT_INDEX];
   if (!item.fileId) return;
+
+  const ok = window.confirm('Delete this image? This action cannot be undone.');
+  if (!ok) return;
+
   loading.delete = true;
   try {
     disableUI();
@@ -563,7 +640,7 @@ async function deleteCurrentImage() {
   }
 }
 
-/* NOTES (on-demand modal) — unchanged flow, just uses canonical IMAGE_URLS */
+/* NOTES (on-demand modal) */
 async function openNoteModal(fileId) {
   if (!fileId || !CURRENT_USER || !SKYSAFE_TOKEN) return;
   const modal = document.getElementById('noteModal');
@@ -573,6 +650,9 @@ async function openNoteModal(fileId) {
   const editBtn = document.getElementById('noteEditBtn');
   const saveBtn = document.getElementById('noteSaveBtn');
   const spinner = document.getElementById('noteSpinner');
+
+  // store fileId on modal so save uses the correct target
+  modal.dataset.fileid = String(fileId);
 
   modal.classList.remove('hidden');
   modal.setAttribute('aria-hidden', 'false');
@@ -638,6 +718,7 @@ function closeNoteModal() {
   if (!modal) return;
   modal.classList.add('hidden');
   modal.setAttribute('aria-hidden', 'true');
+  delete modal.dataset.fileid;
   const noteView = document.getElementById('noteView');
   const noteTextarea = document.getElementById('noteTextarea');
   const editBtn = document.getElementById('noteEditBtn');
@@ -648,11 +729,15 @@ function closeNoteModal() {
   if (saveBtn) saveBtn.classList.add('hidden');
 }
 function toggleNoteEdit() {
+  const modal = document.getElementById('noteModal');
+  if (!modal) return;
+  const fid = modal.dataset.fileid;
   const noteView = document.getElementById('noteView');
   const noteTextarea = document.getElementById('noteTextarea');
   const editBtn = document.getElementById('noteEditBtn');
   const saveBtn = document.getElementById('noteSaveBtn');
 
+  // Use button text as state fallback but prefer modal presence/state
   if (editBtn.textContent === 'Cancel') {
     noteTextarea.classList.add('hidden');
     noteView.classList.remove('hidden');
@@ -661,7 +746,7 @@ function toggleNoteEdit() {
     return;
   }
 
-  const idx = IMAGE_URLS.findIndex(i => i && String(i.fileId) === String(IMAGE_URLS[CURRENT_INDEX]?.fileId));
+  const idx = IMAGE_URLS.findIndex(i => i && String(i.fileId) === String(fid));
   let currentNote = '';
   if (idx !== -1 && typeof IMAGE_URLS[idx].note !== 'undefined') currentNote = IMAGE_URLS[idx].note || '';
   noteTextarea.value = currentNote;
@@ -765,7 +850,9 @@ async function loadTheme() {
   } finally { enableUI(); }
 }
 function applyTheme(name) {
-  document.body.className = '';
+  // don't clobber unrelated classes — only remove classes that start with "theme-"
+  const cls = Array.from(document.body.classList);
+  cls.forEach(c => { if (c && c.indexOf('theme-') === 0) document.body.classList.remove(c); });
   document.body.classList.add(`theme-${name}`);
   if (!CURRENT_USER) document.body.classList.add('no-auth');
 }
@@ -782,15 +869,30 @@ async function saveTheme(theme) {
   } finally { enableUI(); }
 }
 
-/* Wire drag-drop overlay */
+/* Wire drag-drop overlay - only show for file drags */
 let dragCounter = 0;
 function wireDragOverlay() {
   const overlay = document.getElementById('fullDropOverlay');
   if (!overlay) return;
-  window.addEventListener('dragenter', (e) => { e.preventDefault(); dragCounter++; overlay.classList.remove('hidden'); });
+  window.addEventListener('dragenter', (e) => {
+    try {
+      if (!e.dataTransfer) return;
+      const types = Array.from(e.dataTransfer.types || []);
+      if (!types.includes('Files')) return;
+    } catch (ex) { /* ignore and continue */ }
+    e.preventDefault();
+    dragCounter++;
+    overlay.classList.remove('hidden');
+  });
   window.addEventListener('dragover', (e) => e.preventDefault());
   window.addEventListener('dragleave', (e) => { e.preventDefault(); dragCounter = Math.max(0, dragCounter - 1); if (dragCounter === 0) overlay.classList.add('hidden'); });
-  window.addEventListener('drop', (e) => { e.preventDefault(); dragCounter = 0; overlay.classList.add('hidden'); const files = [...(e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files : [])]; if (files.length) files.forEach(f => uploadImage(f)); });
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    overlay.classList.add('hidden');
+    const files = [...(e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files : [])];
+    if (files.length) files.forEach(f => uploadImage(f));
+  });
 }
 
 /* Camera functions (unchanged-ish) */
@@ -880,8 +982,9 @@ function bindUI() {
   if (noteCloseBtn) noteCloseBtn.addEventListener('click', closeNoteModal);
   if (noteEditBtn) noteEditBtn.addEventListener('click', toggleNoteEdit);
   if (noteSaveBtn) noteSaveBtn.addEventListener('click', async () => {
-    const img = IMAGE_URLS[CURRENT_INDEX];
-    if (img && img.fileId) await saveNoteFromModal(img.fileId);
+    const modal = document.getElementById('noteModal');
+    const fid = modal?.dataset?.fileid;
+    if (fid) await saveNoteFromModal(fid);
   });
 
   // simple lightbox buttons
@@ -905,13 +1008,11 @@ function bindUI() {
     if (!el) return;
     try { el.style.touchAction = 'pan-y'; } catch (e) {}
 
-    // If Pointer Events supported, use pointer handlers; otherwise use touch handlers.
     if (window.PointerEvent) {
       let pointerDown = false;
       let startX = 0, startY = 0;
 
       el.addEventListener('pointerdown', (e) => {
-        // record start coords
         startX = e.clientX;
         startY = e.clientY;
         pointerDown = true;
@@ -923,13 +1024,11 @@ function bindUI() {
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
         const absX = Math.abs(dx), absY = Math.abs(dy);
-        // require noticeable horizontal swipe and prefer horizontal movement
         if (absX > 50 && absX > absY) { if (dx < 0) nextImage(); else prevImage(); }
       });
 
       el.addEventListener('pointercancel', () => { pointerDown = false; });
     } else {
-      // Touch fallback (used only when PointerEvent is not available)
       let tStartX = 0, tStartY = 0;
       el.addEventListener('touchstart', (e) => { const t = e.touches && e.touches[0]; if (!t) return; tStartX = t.clientX; tStartY = t.clientY; }, { passive: true });
       el.addEventListener('touchend', (e) => {
@@ -958,6 +1057,7 @@ async function logoutUser() {
   } finally {
     forceLogoutLocal();
     enableUI();
+    // single reload point
     window.location.reload(true);
   }
 }
@@ -969,12 +1069,13 @@ window.addEventListener('DOMContentLoaded', () => {
   wireDragOverlay();
   updateTopbar();
 
-  // set touch-action hints
+  // set touch-action hints: apply to lightbox wrap/general selector (not to non-existent id)
   try {
     const lb = document.getElementById('lightbox');
     if (lb) lb.style.touchAction = 'pan-y';
-    const img = document.getElementById('lightboxImage');
-    if (img) img.style.touchAction = 'none';
+    // we cannot target a single persistent .lightbox-image here because images are dynamic
+    const wrap = document.querySelector('.lightbox-image-wrap');
+    if (wrap) wrap.style.touchAction = 'none';
   } catch (e) {}
 
   // register SW (non-invasive)
