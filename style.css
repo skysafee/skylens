@@ -165,48 +165,52 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 }
 .lightbox .lightbox-close { position:absolute; top:16px; right:16px; background:rgba(0,0,0,0.32); padding:8px; border-radius:8px; color:var(--text); border:none; cursor:pointer; z-index:1310; }
 .lightbox-content { width:100%; max-width:1100px; max-height: calc(100vh - 80px); display:flex; flex-direction:column; align-items:center; gap:12px; position:relative; }
+/* --- lightbox wrapper: stable responsive box --- */
+.lightbox-image-wrap {
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  position:relative;    /* containing block for relative image */
+  overflow:hidden;
+  min-height:40vh;
+  max-height: calc(100vh - 180px);
+  flex: 1 1 auto;
+  padding: 8px; /* small padding so rounded corners don't clip */
+}
 
-/* Prevent images from spilling out and overlapping the actions */
-.lightbox-image-wrap { width:100%; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
-
-/* base image rules used by JS animations — use classes for animation states */
+/* --- image: participate in layout (not absolutely positioned) --- */
 .lightbox-image {
-  max-width: calc(100vw - 48px);
-  max-height: calc(100vh - 140px);
+  max-width: calc(100% - 32px);
+  max-height: calc(100vh - 220px);
   width: auto;
   height: auto;
-  object-fit: contain;   /* important: preserve aspect */
+  object-fit: contain;   /* preserve aspect and fit inside the wrapper */
   margin: 0 auto;
   border-radius: 10px;
   box-shadow: 0 12px 40px rgba(2,6,23,0.7);
   background: #000;
   touch-action: none;
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%) scale(1);
+  position: relative;    /* KEY: not absolute — avoids escape/clipping issues */
+  transform: translateX(0) translateY(0) scale(1);
   transition: transform .42s cubic-bezier(.2,.9,.25,1), opacity .32s ease;
   opacity: 0;
-  z-index: 1320; /* ensure actions can appear above the image */
+  z-index: 1320;
 }
 
-/* When image is visible (entered) */
-.lightbox-image.visible {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
-}
+/* visible state */
+.lightbox-image.visible { opacity: 1; transform: translateX(0) translateY(0) scale(1); }
 
-/* Slide-enter positions (percent-based so responsive) */
-.lightbox-image.enter-from-right { transform: translate(calc(50% + 100%), -50%); opacity: 0; }
-.lightbox-image.enter-from-left  { transform: translate(calc(50% - 100%), -50%); opacity: 0; }
+/* Slide-enter positions (use translateX %) */
+.lightbox-image.enter-from-right { transform: translateX(100%) scale(1); opacity: 0; }
+.lightbox-image.enter-from-left  { transform: translateX(-100%) scale(1); opacity: 0; }
 
 /* Slide-exit positions */
-.lightbox-image.exit-to-left  { transform: translate(calc(50% - 100%), -50%); opacity: 0; }
-.lightbox-image.exit-to-right { transform: translate(calc(50% + 100%), -50%); opacity: 0; }
+.lightbox-image.exit-to-left  { transform: translateX(-100%) scale(1); opacity: 0; }
+.lightbox-image.exit-to-right { transform: translateX(100%)  scale(1); opacity: 0; }
 
-/* Zoom-in from thumbnail uses inline transform applied by JS, but we provide smoothness/fallback */
+/* Zooming: initial transform set inline by JS (scale + translate), animate to none */
 .lightbox-image.zooming { transition: transform .42s cubic-bezier(.2,.9,.25,1), opacity .22s ease; }
-
 /* Controls - ensure nav buttons above the image */
 .lightbox-nav {
   position:absolute; top:50%; transform:translateY(-50%); background:transparent; border:none; color:var(--text); font-size:26px; padding:8px; cursor:pointer; z-index:1350;
@@ -293,3 +297,4 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .small-spinner { width:18px; height:18px; border-radius:50%; border:2px solid rgba(255,255,255,0.08); border-top-color:var(--accent); animation: spin 0.9s linear infinite; display:inline-block; vertical-align:middle; }
 
 /* --------- End --------- */
+
