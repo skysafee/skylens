@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>SkyLens</title>
+  <link rel="manifest" href="/manifest.json">
   <link rel="stylesheet" href="style.css" />
   <link rel="icon" href="iconlensnew192.png" type="image/png">
   <meta name="theme-color" content="#0f1724" />
@@ -25,7 +26,7 @@
           <option value="sunset">Sunset</option>
         </select>
 
-        <button id="logoutButton" class="icon-btn" aria-label="Logout" title="Logout">
+        <button id="logoutButton" class="icon-btn" aria-label="Logout" title="Logout" type="button">
           <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 13v-2H7V8l-5 4 5 4v-3zM20 3h-8v2h8v14h-8v2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
         </button>
       </div>
@@ -100,42 +101,42 @@
 
   <!-- LIGHTBOX -->
   <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" aria-label="Image viewer">
-    <button class="lightbox-close icon-btn" aria-label="Close" title="Close">
+    <button class="lightbox-close icon-btn" aria-label="Close" title="Close" type="button">
       <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     </button>
 
-    <button class="lightbox-nav prev" aria-label="Previous">
+    <button class="lightbox-nav prev" aria-label="Previous" type="button">
       <svg class="icon-svg" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
     </button>
 
     <div class="lightbox-content">
-      <!-- <-- replaced static img with wrapper used by the updated script -->
-      <div class="lightbox-image-wrap" aria-live="polite" role="region"></div>
+      <!-- wrapper used by the script -->
+      <div class="lightbox-image-wrap" aria-live="polite" role="region" aria-label="Image area"></div>
 
-      <div class="lightbox-actions" style="display:flex;gap:10px;margin-top:10px;align-items:center;">
-        <button id="openNoteBtn" class="btn" aria-label="Open note" title="Note">
+      <!-- actions moved to CSS; inline styles removed so CSS can fully control stacking/layout -->
+      <div class="lightbox-actions">
+        <button id="openNoteBtn" class="btn" aria-label="Open note" title="Note" type="button">
           <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z" fill="currentColor"/></svg>
         </button>
 
-        <button id="deleteImageBtn" class="btn" aria-label="Delete image" title="Delete">
+        <button id="deleteImageBtn" class="btn" aria-label="Delete image" title="Delete" type="button">
           <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
         </button>
       </div>
     </div>
 
-    <button class="lightbox-nav next" aria-label="Next">
+    <button class="lightbox-nav next" aria-label="Next" type="button">
       <svg class="icon-svg" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
     </button>
   </div>
 
   <!-- NOTE MODAL -->
   <div id="noteModal" class="modal hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Image note">
-    <!-- changed modal-inner -> modal-card to match CSS -->
     <div class="modal-card">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <h3 style="margin:0">Note</h3>
         <div style="display:flex;gap:8px;align-items:center;">
-          <button id="noteCloseBtn" class="icon-btn" aria-label="Close note">
+          <button id="noteCloseBtn" class="icon-btn" aria-label="Close note" type="button">
             <svg class="icon-svg" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           </button>
         </div>
@@ -147,7 +148,7 @@
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
         <button id="noteEditBtn" class="btn" type="button" aria-label="Edit note">Edit</button>
         <button id="noteSaveBtn" class="btn primary hidden" type="button" aria-label="Save note">Save</button>
-        <span class="note-spinner hidden" id="noteSpinner"></span>
+        <span class="note-spinner hidden" id="noteSpinner" aria-hidden="true"></span>
       </div>
     </div>
   </div>
@@ -162,20 +163,18 @@
 
       <!-- controls pinned to bottom, center capture -->
       <div class="camera-controls" role="toolbar" aria-label="Camera controls">
-        <button id="switchCameraBtn" class="icon-btn circle" aria-label="Switch camera" title="Switch camera">
-          <!-- redo / rotate camera SVG -->
+        <button id="switchCameraBtn" class="icon-btn circle" aria-label="Switch camera" title="Switch camera" type="button">
           <svg class="icon-svg" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 0-2.6 6.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M21 3v6h-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
         </button>
 
-        <button id="captureBtn" class="capture-btn" aria-label="Capture photo" title="Capture">
-          <!-- SVG ring + inner circle -->
+        <button id="captureBtn" class="capture-btn" aria-label="Capture photo" title="Capture" type="button">
           <svg width="84" height="84" viewBox="0 0 84 84" aria-hidden="true">
             <circle cx="42" cy="42" r="36" stroke="#ffffff" stroke-width="4" fill="none" opacity="0.95"/>
             <circle cx="42" cy="42" r="18" fill="#ffffff" opacity="0.96"/>
           </svg>
         </button>
 
-        <button id="closeCameraBtn" class="icon-btn circle ghost" aria-label="Close camera" title="Close">
+        <button id="closeCameraBtn" class="icon-btn circle ghost" aria-label="Close camera" title="Close" type="button">
           <svg class="icon-svg" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </button>
       </div>
@@ -184,7 +183,7 @@
 
   <!-- FAB -->
   <div class="fab-wrap">
-    <button id="fabOpen" class="fab" aria-label="Open actions" title="Upload or capture">
+    <button id="fabOpen" class="fab" aria-label="Open actions" title="Upload or capture" aria-expanded="false" aria-controls="fabOptions" type="button">
       <svg class="icon-svg" viewBox="0 0 24 24"><path d="M12 5v14m7-7H5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
     </button>
 
@@ -192,7 +191,7 @@
       <label for="imageInput" id="fabUploadLabel" class="fab-option" role="button" tabindex="0" aria-label="Upload image">
         <svg class="icon-svg" viewBox="0 0 24 24"><path d="M12 3v10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       </label>
-      <button id="openCameraBtn" class="fab-option" aria-label="Open camera" title="Camera">
+      <button id="openCameraBtn" class="fab-option" aria-label="Open camera" title="Camera" type="button">
         <svg class="icon-svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm7-2h-3.2l-1.1-1.6A1 1 0 0 0 13.8 3H10.2a1 1 0 0 0-.9.4L8.2 5H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z" fill="currentColor"/></svg>
       </button>
     </div>
