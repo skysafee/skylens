@@ -1,7 +1,7 @@
 // =========================
 // Skylens - script.js (grid layout, fixed lightbox ordering, slide + zoom transitions)
-// UPDATED: fixes for lightbox z-index, animation guard fallback, safer parsing,
-// incremental gallery rendering, drag overlay checks, delete confirmation, and more.
+// UPDATED & FIXED: robust navigation, stable CURRENT_INDEX handling, safer animations,
+// incremental rendering, drag overlay checks, delete confirmation retained.
 // =========================
 
 /* CONFIG */
@@ -12,7 +12,7 @@ const noteLoading = {};
 
 /* STATE */
 let CURRENT_USER = localStorage.getItem('CURRENT_USER') || null;
-let SKYSAFE_TOKEN = localStorage.getItem('skySafeeToken') || null; // note: kept original name as requested
+let SKYSAFE_TOKEN = localStorage.getItem('skySafeeToken') || null; // preserved exact name
 let IMAGE_URLS = []; // canonical array of images in display order (newest-first)
 let CURRENT_INDEX = -1;
 let CURRENT_THEME = localStorage.getItem('theme') || 'default';
@@ -67,7 +67,6 @@ async function callAppsScript(payload) {
     });
     const text = await res.text();
     if (!text) throw new Error('Empty response from server');
-    // Try parse and capture raw text on failure for debugging
     let data;
     try {
       data = JSON.parse(text);
@@ -95,10 +94,8 @@ function setAllButtonsDisabled(disabled) {
   const nodes = document.querySelectorAll(selector);
   for (const el of nodes) {
     try {
-      // Preserve file-picker label functionality — if this label targets the file input, don't disable it
       if (disabled) {
         if (el.tagName === 'LABEL' && el.getAttribute('for') === 'imageInput') {
-          // leave it interactive so users can still open file picker
           continue;
         }
       }
@@ -108,7 +105,6 @@ function setAllButtonsDisabled(disabled) {
       if (disabled) {
         el.classList.add('disabled');
         el.setAttribute('aria-disabled', 'true');
-        // avoid globally removing pointer events for labels that need to remain interactive
         if (!(el.tagName === 'LABEL' && el.getAttribute('for') === 'imageInput')) {
           el.style.pointerEvents = 'none';
         }
@@ -121,9 +117,7 @@ function setAllButtonsDisabled(disabled) {
         el.style.opacity = '';
         el.style.cursor = '';
       }
-    } catch (e) {
-      // swallow individual element errors
-    }
+    } catch (e) {}
   }
 }
 function disableUI(){ setAllButtonsDisabled(true); }
@@ -150,7 +144,7 @@ function initObserver() {
 
 /* Create one tile (returns null for invalid objects) */
 function createGalleryItem(obj) {
-  if (!obj || !obj.url) return null; // skip invalid items (prevents empty placeholders)
+  if (!obj || !obj.url) return null;
   const div = document.createElement('div');
   div.className = 'gallery-item';
   if (obj.fileId) div.dataset.fileid = String(obj.fileId);
@@ -165,7 +159,6 @@ function createGalleryItem(obj) {
   img.loading = 'lazy';
   img.draggable = false;
 
-  // attach handlers BEFORE assigning src (observer will assign src later)
   img.onload = () => {
     div.classList.add('loaded');
     if (sk.parentNode) sk.remove();
@@ -202,9 +195,7 @@ function createGalleryItem(obj) {
   return div;
 }
 
-/* Render gallery from canonical IMAGE_URLS array using incremental updates
-   Reuses existing DOM nodes by fileId where possible to avoid full re-render churn.
-*/
+/* Render gallery from canonical IMAGE_URLS array using incremental updates */
 function renderGallery() {
   const container = document.getElementById('gallery');
   if (!container) return;
@@ -216,15 +207,11 @@ function renderGallery() {
   });
 
   const frag = document.createDocumentFragment();
-  const toKeep = new Set();
 
   for (const obj of IMAGE_URLS) {
-    // createGalleryItem can return null for invalid objects
     if (!obj || !obj.fileId) continue;
     const fid = String(obj.fileId);
-    toKeep.add(fid);
     if (existingMap.has(fid)) {
-      // move existing node into fragment (keeps its image/focus state)
       frag.appendChild(existingMap.get(fid));
       existingMap.delete(fid);
     } else {
@@ -233,19 +220,15 @@ function renderGallery() {
     }
   }
 
-  // Remove leftover nodes (those not present in current IMAGE_URLS)
   for (const [oldFid, oldEl] of existingMap) {
     if (oldEl && oldEl.parentNode) oldEl.parentNode.removeChild(oldEl);
   }
 
-  // Clear and append frag (this moves nodes in-place)
   container.replaceChildren();
   container.appendChild(frag);
 }
 
-/* Load paginated images and update canonical IMAGE_URLS
-   Server returns newest-first (we keep that ordering)
-*/
+/* Load paginated images and update canonical IMAGE_URLS */
 async function loadGallery(start = 0, limit = INITIAL_LOAD_COUNT) {
   if (loading.gallery) return;
   if (!CURRENT_USER || !SKYSAFE_TOKEN) return;
@@ -260,26 +243,19 @@ async function loadGallery(start = 0, limit = INITIAL_LOAD_COUNT) {
       return;
     }
 
-    // server returns images array newest-first
     const images = Array.isArray(res.images) ? res.images : [];
-
-    // Filter duplicates and preserve order; skip items lacking fileId/url to avoid unopenable tiles
     const newImages = [];
     for (const img of images) {
       const fid = String(img.fileId || '');
-      if (!fid) continue; // skip items without fileId
+      if (!fid) continue;
       if (SEEN_FILEIDS.has(fid)) continue;
       SEEN_FILEIDS.add(fid);
       newImages.push(img);
     }
 
-    // Append older items to the end of IMAGE_URLS (we keep newest-first at start)
     IMAGE_URLS = IMAGE_URLS.concat(newImages);
-
-    // Render incrementally (reuses existing nodes)
     renderGallery();
 
-    // Pagination bookkeeping
     if (typeof res.nextStart !== 'undefined') {
       NEXT_START = res.nextStart;
       HAS_MORE = !!res.hasMore;
@@ -322,7 +298,6 @@ async function uploadImage(file) {
       const dataUrl = e.target.result;
       const res = await callAppsScript({ action: 'uploadToDrive', dataUrl, filename: file.name, token: SKYSAFE_TOKEN });
       if (res && res.success) {
-        // On success remove placeholder and add new image at top (newest-first)
         placeholder.remove();
         const newImage = { date: (new Date()).toISOString(), url: res.url || '', fileId: res.fileId || '', note: '' };
         if (newImage.fileId && !SEEN_FILEIDS.has(newImage.fileId)) {
@@ -330,7 +305,6 @@ async function uploadImage(file) {
           IMAGE_URLS.unshift(newImage);
           renderGallery();
         } else {
-          // fallback: refresh a small page
           IMAGE_URLS = [];
           SEEN_FILEIDS.clear();
           document.getElementById('gallery').innerHTML = '';
@@ -357,52 +331,73 @@ async function uploadImage(file) {
 function makeSkeletonItem() {
   const div = document.createElement('div');
   div.className = 'gallery-item';
-  div.dataset.uploadPlaceholder = '1'; // mark optimistic placeholder
+  div.dataset.uploadPlaceholder = '1';
   const sk = document.createElement('div');
   sk.className = 'skeleton';
   div.appendChild(sk);
   return div;
 }
 
+/* Utility to resolve current index robustly (falls back to DOM if needed) */
+function resolveCurrentIndex() {
+  if (typeof CURRENT_INDEX === 'number' && CURRENT_INDEX >= 0 && CURRENT_INDEX < IMAGE_URLS.length) {
+    return CURRENT_INDEX;
+  }
+  // Look for a displayed image and its data-fileid
+  const wrap = document.querySelector('.lightbox-image-wrap');
+  const img = wrap?.querySelector('.lightbox-image');
+  const fid = img?.dataset?.fileid;
+  if (fid) {
+    const idx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fid));
+    if (idx !== -1) {
+      CURRENT_INDEX = idx;
+      return idx;
+    }
+  }
+  // fallback: try to find the displayed src in IMAGE_URLS
+  const src = img?.src;
+  if (src) {
+    const idx2 = IMAGE_URLS.findIndex(i => (i.url || '') === src || (i.url && src && src.indexOf(i.url) !== -1));
+    if (idx2 !== -1) {
+      CURRENT_INDEX = idx2;
+      return idx2;
+    }
+  }
+  return -1;
+}
+
 /* LIGHTBOX — keep indices in sync with IMAGE_URLS by using canonical array */
-/* openLightboxByFileId optionally accepts sourceEl (thumbnail DOM element) to animate from */
+/* openLightbox opens by index (use index, not fileId) */
 function openLightbox(index, sourceEl) {
-  if (index < 0 || index >= IMAGE_URLS.length) return;
+  if (typeof index !== 'number' || index < 0 || index >= IMAGE_URLS.length) return;
   CURRENT_INDEX = index;
   const lb = document.getElementById('lightbox');
   if (!lb) return;
 
-  // dim gallery
   document.getElementById('gallery')?.classList.add('gallery-dimmed');
 
   lb.classList.remove('hidden');
-  // ensure actions sit above images (JS safety-net for overlapping)
   const actions = lb.querySelector('.lightbox-actions');
   if (actions) {
     actions.style.position = 'relative';
     actions.style.zIndex = '1360';
-    // ensure clickable
     actions.style.pointerEvents = 'auto';
   }
 
-  // toggle visible state for fade-in
   requestAnimationFrame(() => lb.classList.add('visible'));
 
-  // show image with animation (zoom from thumbnail if provided)
   showImageAtIndex(index, { sourceEl, openZoom: !!sourceEl });
 }
 
+/* open by fileId; attempt to load more pages instead of clearing current state */
 function openLightboxByFileId(fileId, sourceEl) {
   const idx = IMAGE_URLS.findIndex(i => String(i.fileId || '') === String(fileId || ''));
   if (idx === -1) {
-    // try loading more pages (do not clear current state) and attempt again once loaded
     if (!loading.gallery && HAS_MORE) {
       loadGallery(NEXT_START, LOAD_MORE_COUNT).then(() => {
         const newIdx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fileId || ''));
         if (newIdx !== -1) openLightbox(newIdx, sourceEl);
-      }).catch(() => {
-        // no-op
-      });
+      }).catch(() => {});
     }
     return;
   }
@@ -410,35 +405,22 @@ function openLightboxByFileId(fileId, sourceEl) {
 }
 
 function closeLightbox() {
-  if (lightboxAnimating) return; // avoid closing mid-animation
+  if (lightboxAnimating) return;
   const lb = document.getElementById('lightbox');
   if (!lb) return;
-  // remove visible classes for fade-out
   lb.classList.remove('visible');
-  // remove dim on gallery
   document.getElementById('gallery')?.classList.remove('gallery-dimmed');
 
-  // after transition remove hidden (match CSS transition duration ~280ms)
   setTimeout(() => {
     lb.classList.add('hidden');
-    // clear images
     const wrap = document.querySelector('.lightbox-image-wrap');
     if (wrap) wrap.replaceChildren();
     CURRENT_INDEX = -1;
-    // clear any lingering animation timer
     if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; lightboxAnimating = false; }
   }, 320);
 }
 
-/* showImageAtIndex handles entry animations and slide transitions */
-/* showImageAtIndex — updated to use flex-centered layout and translate-based animations */
-/* Robust showImageAtIndex — handles zoom-open, slide left/right, and default fade.
-   Key improvements:
-   - attach handlers BEFORE setting src (catches cached images)
-   - set src before append so download starts immediately
-   - append with enter class, force reflow, then animate in rAF
-   - centralized cleanup on transitionend with timeout fallback
-*/
+/* showImageAtIndex: robust, tags image with fileId, sets CURRENT_INDEX early */
 function showImageAtIndex(index, options = {}) {
   if (typeof index !== 'number' || index < 0 || index >= IMAGE_URLS.length) {
     console.warn('showImageAtIndex: invalid index', index);
@@ -448,6 +430,9 @@ function showImageAtIndex(index, options = {}) {
   const wrap = document.querySelector('.lightbox-image-wrap');
   if (!wrap) { console.warn('showImageAtIndex: missing wrapper'); return; }
   if (lightboxAnimating) { console.warn('showImageAtIndex: animation in progress, skip'); return; }
+
+  // set CURRENT_INDEX early so navigation logic sees a valid index
+  CURRENT_INDEX = index;
 
   lightboxAnimating = true;
   if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
@@ -459,7 +444,7 @@ function showImageAtIndex(index, options = {}) {
 
   const item = IMAGE_URLS[index] || {};
   const url = item.url;
-  const direction = options.direction || null; // 'left' means new slides in from right (next)
+  const direction = options.direction || null;
   const sourceEl = options.sourceEl || null;
   const openZoom = !!options.openZoom;
   const existing = wrap.querySelector('img.lightbox-image');
@@ -474,23 +459,20 @@ function showImageAtIndex(index, options = {}) {
     return;
   }
 
-  // small spinner so user gets immediate feedback while large images load
   const spinner = document.createElement('div');
   spinner.className = 'small-spinner';
   spinner.style.margin = '10px auto';
   spinner.setAttribute('aria-hidden', 'true');
 
-  // create image and attach handlers BEFORE setting src
   const newImg = document.createElement('img');
   newImg.className = 'lightbox-image';
   newImg.alt = item.alt || 'Lightbox image';
   newImg.draggable = false;
-  // safe baseline styles to ensure transitions work
+  newImg.dataset.fileid = item.fileId ? String(item.fileId) : '';
   newImg.style.transition = 'transform .42s cubic-bezier(.2,.9,.25,1), opacity .32s ease';
   newImg.style.opacity = '0';
   newImg.style.willChange = 'transform, opacity';
 
-  // central finalize/cleanup
   const finalize = () => {
     if (spinner.parentNode) spinner.remove();
     if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
@@ -499,7 +481,6 @@ function showImageAtIndex(index, options = {}) {
     CURRENT_INDEX = index;
   };
 
-  // error handler
   newImg.onerror = (ev) => {
     console.error('Lightbox image failed to load', url, ev);
     if (spinner.parentNode) spinner.remove();
@@ -509,21 +490,16 @@ function showImageAtIndex(index, options = {}) {
     toast('Failed to load image (see console)');
   };
 
-  // handler when transition finishes on the new image
   const onTransitionEnd = (ev) => {
-    // run once
     newImg.removeEventListener('transitionend', onTransitionEnd);
     finalize();
   };
   newImg.addEventListener('transitionend', onTransitionEnd);
 
-  // onload may not be needed for slide transitions (we animate regardless), but we keep it for zoom fallback
   newImg.onload = () => {
-    // when loaded we don't block the animation; image becomes visible as transforms animate
-    // no additional action required here in most cases
+    // no-op: animation handles visibility
   };
 
-  // ensure the browser starts fetching image as early as possible
   try {
     newImg.src = url;
   } catch (errSrc) {
@@ -534,10 +510,9 @@ function showImageAtIndex(index, options = {}) {
     return;
   }
 
-  // Append spinner and then handle different entrance modes
   wrap.appendChild(spinner);
 
-  // --- Zoom-from-thumb animation (pixel-based) ---
+  // Zoom-from-thumb
   if (openZoom && sourceEl) {
     try {
       const thumbRect = sourceEl.getBoundingClientRect();
@@ -553,94 +528,83 @@ function showImageAtIndex(index, options = {}) {
       const finalMaxWidth = Math.min(window.innerWidth - 48, wrapRect.width || (window.innerWidth - 48));
       const scale = Math.max(0.06, (thumbRect.width / Math.max(1, finalMaxWidth)));
 
-      // place newImg at start transform (relative translate + scale)
       newImg.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(${scale})`;
       newImg.style.opacity = '0';
-      // append new image
       if (!newImg.parentNode) wrap.appendChild(newImg);
-      // force reflow then animate to center
       void newImg.offsetWidth;
       requestAnimationFrame(() => {
         newImg.style.transform = 'translate(0px, 0px) scale(1)';
         newImg.style.opacity = '1';
       });
-      // transitionend listener will call finalize()
       return;
     } catch (errZoom) {
       console.warn('zoom-from-thumb fallback', errZoom);
-      // fall through to normal slide/fade behaviour
     }
   }
 
-  // --- Slide transition when an existing image is present ---
+  // Slide transition
   if (existing && direction) {
-    // append new image and give it starting enter class
     if (!newImg.parentNode) wrap.appendChild(newImg);
+    if (direction === 'left') newImg.classList.add('enter-from-right');
+    else newImg.classList.add('enter-from-left');
 
-    // ensure CSS-based enter-from classes exist; we use inline transform fallback if needed
-    if (direction === 'left') {
-      newImg.classList.add('enter-from-right');
-    } else {
-      newImg.classList.add('enter-from-left');
-    }
-
-    // force reflow so start positions register
     void newImg.offsetWidth;
 
     requestAnimationFrame(() => {
-      // move old image out
-      if (direction === 'left') {
-        existing.classList.add('exit-to-left');
-      } else {
-        existing.classList.add('exit-to-right');
-      }
+      if (direction === 'left') existing.classList.add('exit-to-left');
+      else existing.classList.add('exit-to-right');
       existing.classList.remove('visible');
 
-      // bring new in
       newImg.classList.remove('enter-from-right', 'enter-from-left');
       newImg.classList.add('visible');
-      // transitionend on newImg will call finalize()
     });
-
     return;
   }
 
-  // --- Default: fade/pop-in ---
+  // Default fade/pop-in
   if (!newImg.parentNode) wrap.appendChild(newImg);
   newImg.style.transform = 'translate(0px, 0px) scale(0.98)';
   newImg.style.opacity = '0';
-  // reflow then animate
   void newImg.offsetWidth;
   requestAnimationFrame(() => {
     newImg.style.transform = 'translate(0px, 0px) scale(1)';
     newImg.style.opacity = '1';
   });
-  // transitionend listener will call finalize()
 }
 
-
+/* NAVIGATION: next/prev with robust index resolution */
 async function nextImage() {
   if (lightboxAnimating) return;
-  if (CURRENT_INDEX < IMAGE_URLS.length - 1) {
-    const newIndex = CURRENT_INDEX + 1;
+
+  let current = resolveCurrentIndex();
+  if (current === -1) return;
+
+  if (current < IMAGE_URLS.length - 1) {
+    const newIndex = current + 1;
     showImageAtIndex(newIndex, { direction: 'left' });
     return;
   }
 
-  // If at last loaded but server has more, load more, then advance
   if (HAS_MORE && !loading.gallery) {
     const prevLen = IMAGE_URLS.length;
     await loadGallery(NEXT_START, LOAD_MORE_COUNT);
+    // re-resolve index by fileId (in case array shifted)
+    current = resolveCurrentIndex();
     if (IMAGE_URLS.length > prevLen) {
-      const newIndex = CURRENT_INDEX + 1;
-      showImageAtIndex(newIndex, { direction: 'left' });
+      const newIndex = Math.min(IMAGE_URLS.length - 1, current + 1);
+      if (newIndex > current) showImageAtIndex(newIndex, { direction: 'left' });
     }
   }
 }
+
 function prevImage() {
   if (lightboxAnimating) return;
-  if (CURRENT_INDEX > 0) {
-    const newIndex = CURRENT_INDEX - 1;
+
+  const current = resolveCurrentIndex();
+  if (current === -1) return;
+
+  if (current > 0) {
+    const newIndex = current - 1;
     showImageAtIndex(newIndex, { direction: 'right' });
   }
 }
@@ -648,8 +612,9 @@ function prevImage() {
 /* DELETE with confirmation */
 async function deleteCurrentImage() {
   if (loading.delete) return;
-  if (CURRENT_INDEX < 0 || !IMAGE_URLS[CURRENT_INDEX]) return;
-  const item = IMAGE_URLS[CURRENT_INDEX];
+  const idxResolved = resolveCurrentIndex();
+  if (idxResolved < 0 || !IMAGE_URLS[idxResolved]) return;
+  const item = IMAGE_URLS[idxResolved];
   if (!item.fileId) return;
 
   const ok = window.confirm('Delete this image? This action cannot be undone.');
@@ -666,12 +631,11 @@ async function deleteCurrentImage() {
       SEEN_FILEIDS.delete(fid);
       renderGallery();
       toast('Image deleted');
-      // adjust index & close lightbox if needed
       if (IMAGE_URLS.length === 0) {
         closeLightbox();
       } else {
-        CURRENT_INDEX = Math.max(0, Math.min(CURRENT_INDEX, IMAGE_URLS.length - 1));
-        showImageAtIndex(CURRENT_INDEX, {}); // refresh displayed image
+        const newIdx = Math.max(0, Math.min(idx, IMAGE_URLS.length - 1));
+        showImageAtIndex(newIdx, {});
       }
     } else {
       toast((res && res.message) ? res.message : 'Delete failed');
@@ -696,7 +660,6 @@ async function openNoteModal(fileId) {
   const saveBtn = document.getElementById('noteSaveBtn');
   const spinner = document.getElementById('noteSpinner');
 
-  // store fileId on modal so save uses the correct target
   modal.dataset.fileid = String(fileId);
 
   modal.classList.remove('hidden');
@@ -710,7 +673,6 @@ async function openNoteModal(fileId) {
   if (spinner) spinner.classList.remove('hidden');
 
   if (noteLoading[fileId]) {
-    // wait a little if another request is ongoing
     const waitUntil = Date.now() + 5000;
     const poll = () => {
       const idx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fileId));
@@ -782,7 +744,6 @@ function toggleNoteEdit() {
   const editBtn = document.getElementById('noteEditBtn');
   const saveBtn = document.getElementById('noteSaveBtn');
 
-  // Use button text as state fallback but prefer modal presence/state
   if (editBtn.textContent === 'Cancel') {
     noteTextarea.classList.add('hidden');
     noteView.classList.remove('hidden');
@@ -832,7 +793,7 @@ async function saveNoteFromModal(fileId) {
   }
 }
 
-/* AUTH (unchanged) */
+/* AUTH */
 let isSignupMode = false;
 function toggleSignup() {
   isSignupMode = !isSignupMode;
@@ -895,7 +856,6 @@ async function loadTheme() {
   } finally { enableUI(); }
 }
 function applyTheme(name) {
-  // don't clobber unrelated classes — only remove classes that start with "theme-"
   const cls = Array.from(document.body.classList);
   cls.forEach(c => { if (c && c.indexOf('theme-') === 0) document.body.classList.remove(c); });
   document.body.classList.add(`theme-${name}`);
@@ -924,7 +884,7 @@ function wireDragOverlay() {
       if (!e.dataTransfer) return;
       const types = Array.from(e.dataTransfer.types || []);
       if (!types.includes('Files')) return;
-    } catch (ex) { /* ignore and continue */ }
+    } catch (ex) {}
     e.preventDefault();
     dragCounter++;
     overlay.classList.remove('hidden');
@@ -940,7 +900,7 @@ function wireDragOverlay() {
   });
 }
 
-/* Camera functions (unchanged-ish) */
+/* Camera functions */
 async function startCamera() {
   if (cameraStarting) return;
   cameraStarting = true;
@@ -1021,7 +981,7 @@ function bindUI() {
   if (logoutBtn) logoutBtn.addEventListener('click', logoutUser);
 
   if (openNoteBtn) openNoteBtn.addEventListener('click', () => {
-    const img = IMAGE_URLS[CURRENT_INDEX];
+    const img = IMAGE_URLS[resolveCurrentIndex()];
     if (img && img.fileId) openNoteModal(img.fileId);
   });
   if (noteCloseBtn) noteCloseBtn.addEventListener('click', closeNoteModal);
@@ -1046,7 +1006,7 @@ function bindUI() {
     if (e.key === 'ArrowLeft') prevImage();
   });
 
-  // Attach swipe handlers to the lightbox container only (prevents duplicate / conflicting events)
+  // Attach swipe handlers to the lightbox container only
   const lb = document.getElementById('lightbox');
 
   const attachSwipe = (el) => {
@@ -1102,7 +1062,6 @@ async function logoutUser() {
   } finally {
     forceLogoutLocal();
     enableUI();
-    // single reload point
     window.location.reload(true);
   }
 }
@@ -1114,16 +1073,13 @@ window.addEventListener('DOMContentLoaded', () => {
   wireDragOverlay();
   updateTopbar();
 
-  // set touch-action hints: apply to lightbox wrap/general selector (not to non-existent id)
   try {
     const lb = document.getElementById('lightbox');
     if (lb) lb.style.touchAction = 'pan-y';
-    // we cannot target a single persistent .lightbox-image here because images are dynamic
     const wrap = document.querySelector('.lightbox-image-wrap');
     if (wrap) wrap.style.touchAction = 'none';
   } catch (e) {}
 
-  // register SW (non-invasive)
   registerServiceWorker();
 
   if (CURRENT_USER && SKYSAFE_TOKEN) {
@@ -1135,5 +1091,3 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('gallerySection')?.classList.add('hidden');
   }
 });
-
-
