@@ -171,31 +171,36 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
   display:flex;
   align-items:center;
   justify-content:center;
-  position:relative;    /* containing block for relative image */
-  overflow:hidden;
+  position:relative;
+  /* allow transformed images to extend outside during zoom/slide */
+  overflow: visible;      /* changed from hidden -> visible to avoid clipping during transforms */
   min-height:40vh;
   max-height: calc(100vh - 180px);
   flex: 1 1 auto;
-  padding: 8px; /* small padding so rounded corners don't clip */
+  padding: 8px;
 }
 
-/* --- image: participate in layout (not absolutely positioned) --- */
 .lightbox-image {
   max-width: calc(100% - 32px);
   max-height: calc(100vh - 220px);
   width: auto;
   height: auto;
-  object-fit: contain;   /* preserve aspect and fit inside the wrapper */
+  object-fit: contain;
   margin: 0 auto;
   border-radius: 10px;
   box-shadow: 0 12px 40px rgba(2,6,23,0.7);
   background: #000;
   touch-action: none;
-  position: relative;    /* KEY: not absolute — avoids escape/clipping issues */
+  position: relative;
   transform: translateX(0) translateY(0) scale(1);
   transition: transform .42s cubic-bezier(.2,.9,.25,1), opacity .32s ease;
   opacity: 0;
   z-index: 1320;
+  /* recommended additions for smoother animation */
+  transform-origin: center center;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform, opacity;
 }
 
 /* visible state */
@@ -297,4 +302,5 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .small-spinner { width:18px; height:18px; border-radius:50%; border:2px solid rgba(255,255,255,0.08); border-top-color:var(--accent); animation: spin 0.9s linear infinite; display:inline-block; vertical-align:middle; }
 
 /* --------- End --------- */
+
 
