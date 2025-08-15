@@ -10,11 +10,12 @@ const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const IMAGE_CACHE = `${CACHE_VERSION}-images`;
 const CORE_ASSETS = [
   '/',                 // navigation fallback
-  '/index.html',
-  '/style.css',
-  '/script.js',
-  '/iconlensnew192.png',
-  '/iconlensnew512.png'
+  'https://raw.githubusercontent.com/skysafee/skylens/refs/heads/main/index.html',
+  'https://raw.githubusercontent.com/skysafee/skylens/refs/heads/main/style.css',
+  'https://raw.githubusercontent.com/skysafee/skylens/refs/heads/main/script.js',
+  'https://raw.githubusercontent.com/skysafee/skylens/refs/heads/main/iconlensnew192.png',
+  'https://raw.githubusercontent.com/skysafee/skylens/refs/heads/main/iconlensnew512.png',
+  'https://raw.githubusercontent.com/skysafee/skylens/refs/heads/main/manifest.json',
 ];
 
 // If you change SCRIPT_URL in your app, keep it in sync here so we don't cache API responses
