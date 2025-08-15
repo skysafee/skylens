@@ -1,7 +1,7 @@
 // =========================
 // Skylens - script.js (grid layout, fixed lightbox ordering, slide + zoom transitions)
-// UPDATED & FIXED: robust navigation, stable CURRENT_INDEX handling, safer animations,
-// incremental rendering, drag overlay checks, delete confirmation retained.
+// FIXED: robust navigation, immediate CURRENT_INDEX, per-call animation fallback,
+// z-index for images, and more defensive cleanup.
 // =========================
 
 /* CONFIG */
@@ -12,7 +12,7 @@ const noteLoading = {};
 
 /* STATE */
 let CURRENT_USER = localStorage.getItem('CURRENT_USER') || null;
-let SKYSAFE_TOKEN = localStorage.getItem('skySafeeToken') || null; // preserved exact name
+let SKYSAFE_TOKEN = localStorage.getItem('skySafeeToken') || null; // exact name preserved
 let IMAGE_URLS = []; // canonical array of images in display order (newest-first)
 let CURRENT_INDEX = -1;
 let CURRENT_THEME = localStorage.getItem('theme') || 'default';
@@ -43,7 +43,6 @@ function toast(msg, timeout = 2200) {
 }
 
 function forceLogoutLocal(reasonMsg) {
-  // clear local state but do NOT reload here — caller (logoutUser) will reload if desired
   localStorage.removeItem('CURRENT_USER');
   localStorage.removeItem('skySafeeToken');
   CURRENT_USER = null; SKYSAFE_TOKEN = null;
@@ -57,7 +56,7 @@ function forceLogoutLocal(reasonMsg) {
   if (reasonMsg) toast(reasonMsg);
 }
 
-/* Robust Apps Script caller with safer parsing + improved error messaging */
+/* Robust Apps Script caller */
 async function callAppsScript(payload) {
   try {
     const res = await fetch(SCRIPT_URL, {
@@ -68,11 +67,9 @@ async function callAppsScript(payload) {
     const text = await res.text();
     if (!text) throw new Error('Empty response from server');
     let data;
-    try {
-      data = JSON.parse(text);
-    } catch (err) {
-      console.error('callAppsScript: failed to parse JSON response', text);
-      throw new Error('Unexpected server response (non-JSON). See console for details.');
+    try { data = JSON.parse(text); } catch (err) {
+      console.error('callAppsScript parse error', text);
+      throw new Error('Unexpected server response (non-JSON). See console.');
     }
     if (data && data.success === false && /unauthoriz/i.test(String(data.message || ''))) {
       forceLogoutLocal('Session expired — please sign in again');
@@ -88,26 +85,20 @@ async function callAppsScript(payload) {
   }
 }
 
-/* UI disable/enable — avoid disabling native <label for="imageInput"> used for file picker */
+/* UI disable/enable — avoid disabling file-picker label */
 function setAllButtonsDisabled(disabled) {
   const selector = 'button, input[type="button"], input[type="submit"], .fab-option, .icon-btn, .link, .control, label';
   const nodes = document.querySelectorAll(selector);
   for (const el of nodes) {
     try {
       if (disabled) {
-        if (el.tagName === 'LABEL' && el.getAttribute('for') === 'imageInput') {
-          continue;
-        }
+        if (el.tagName === 'LABEL' && el.getAttribute('for') === 'imageInput') continue;
       }
-
       if ('disabled' in el) el.disabled = !!disabled;
-
       if (disabled) {
         el.classList.add('disabled');
         el.setAttribute('aria-disabled', 'true');
-        if (!(el.tagName === 'LABEL' && el.getAttribute('for') === 'imageInput')) {
-          el.style.pointerEvents = 'none';
-        }
+        if (!(el.tagName === 'LABEL' && el.getAttribute('for') === 'imageInput')) el.style.pointerEvents = 'none';
         el.style.opacity = '0.6';
         el.style.cursor = 'not-allowed';
       } else {
@@ -137,12 +128,10 @@ function initObserver() {
         }
       });
     }, { rootMargin: '200px' });
-  } else {
-    imgObserver = null;
-  }
+  } else imgObserver = null;
 }
 
-/* Create one tile (returns null for invalid objects) */
+/* Create gallery tile */
 function createGalleryItem(obj) {
   if (!obj || !obj.url) return null;
   const div = document.createElement('div');
@@ -180,22 +169,19 @@ function createGalleryItem(obj) {
   };
 
   div.appendChild(img);
-
   if (imgObserver) imgObserver.observe(img);
   else img.src = img.dataset.src;
 
-  // pass the thumbnail element so we can animate from it
-  div.addEventListener('click', (e) => {
+  div.addEventListener('click', () => {
     const fid = div.dataset.fileid;
     if (fid) openLightboxByFileId(fid, div);
   });
   div.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const fid = div.dataset.fileid; if (fid) openLightboxByFileId(fid, div); } });
   div.tabIndex = 0;
-
   return div;
 }
 
-/* Render gallery from canonical IMAGE_URLS array using incremental updates */
+/* Render gallery incrementally */
 function renderGallery() {
   const container = document.getElementById('gallery');
   if (!container) return;
@@ -207,7 +193,6 @@ function renderGallery() {
   });
 
   const frag = document.createDocumentFragment();
-
   for (const obj of IMAGE_URLS) {
     if (!obj || !obj.fileId) continue;
     const fid = String(obj.fileId);
@@ -228,7 +213,7 @@ function renderGallery() {
   container.appendChild(frag);
 }
 
-/* Load paginated images and update canonical IMAGE_URLS */
+/* Load paginated images */
 async function loadGallery(start = 0, limit = INITIAL_LOAD_COUNT) {
   if (loading.gallery) return;
   if (!CURRENT_USER || !SKYSAFE_TOKEN) return;
@@ -277,7 +262,7 @@ async function loadGallery(start = 0, limit = INITIAL_LOAD_COUNT) {
   }
 }
 
-/* Upload flow: optimistic skeleton then insert at the top (newest-first) */
+/* Upload flow */
 async function uploadImage(file) {
   if (!file || !CURRENT_USER || !SKYSAFE_TOKEN) { toast('Not signed in'); return; }
   if (loading.upload) return;
@@ -338,42 +323,30 @@ function makeSkeletonItem() {
   return div;
 }
 
-/* Utility to resolve current index robustly (falls back to DOM if needed) */
+/* Resolve current index robustly (keeps navigation safe) */
 function resolveCurrentIndex() {
-  if (typeof CURRENT_INDEX === 'number' && CURRENT_INDEX >= 0 && CURRENT_INDEX < IMAGE_URLS.length) {
-    return CURRENT_INDEX;
-  }
-  // Look for a displayed image and its data-fileid
+  if (typeof CURRENT_INDEX === 'number' && CURRENT_INDEX >= 0 && CURRENT_INDEX < IMAGE_URLS.length) return CURRENT_INDEX;
   const wrap = document.querySelector('.lightbox-image-wrap');
   const img = wrap?.querySelector('.lightbox-image');
   const fid = img?.dataset?.fileid;
   if (fid) {
     const idx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fid));
-    if (idx !== -1) {
-      CURRENT_INDEX = idx;
-      return idx;
-    }
+    if (idx !== -1) { CURRENT_INDEX = idx; return idx; }
   }
-  // fallback: try to find the displayed src in IMAGE_URLS
   const src = img?.src;
   if (src) {
     const idx2 = IMAGE_URLS.findIndex(i => (i.url || '') === src || (i.url && src && src.indexOf(i.url) !== -1));
-    if (idx2 !== -1) {
-      CURRENT_INDEX = idx2;
-      return idx2;
-    }
+    if (idx2 !== -1) { CURRENT_INDEX = idx2; return idx2; }
   }
   return -1;
 }
 
-/* LIGHTBOX — keep indices in sync with IMAGE_URLS by using canonical array */
-/* openLightbox opens by index (use index, not fileId) */
+/* LIGHTBOX: open/close */
 function openLightbox(index, sourceEl) {
   if (typeof index !== 'number' || index < 0 || index >= IMAGE_URLS.length) return;
   CURRENT_INDEX = index;
   const lb = document.getElementById('lightbox');
   if (!lb) return;
-
   document.getElementById('gallery')?.classList.add('gallery-dimmed');
 
   lb.classList.remove('hidden');
@@ -383,13 +356,10 @@ function openLightbox(index, sourceEl) {
     actions.style.zIndex = '1360';
     actions.style.pointerEvents = 'auto';
   }
-
   requestAnimationFrame(() => lb.classList.add('visible'));
-
   showImageAtIndex(index, { sourceEl, openZoom: !!sourceEl });
 }
 
-/* open by fileId; attempt to load more pages instead of clearing current state */
 function openLightboxByFileId(fileId, sourceEl) {
   const idx = IMAGE_URLS.findIndex(i => String(i.fileId || '') === String(fileId || ''));
   if (idx === -1) {
@@ -420,7 +390,7 @@ function closeLightbox() {
   }, 320);
 }
 
-/* showImageAtIndex: robust, tags image with fileId, sets CURRENT_INDEX early */
+/* showImageAtIndex — robust, per-call fallback, z-index control */
 function showImageAtIndex(index, options = {}) {
   if (typeof index !== 'number' || index < 0 || index >= IMAGE_URLS.length) {
     console.warn('showImageAtIndex: invalid index', index);
@@ -431,39 +401,56 @@ function showImageAtIndex(index, options = {}) {
   if (!wrap) { console.warn('showImageAtIndex: missing wrapper'); return; }
   if (lightboxAnimating) { console.warn('showImageAtIndex: animation in progress, skip'); return; }
 
-  // set CURRENT_INDEX early so navigation logic sees a valid index
+  // set CURRENT_INDEX early so navigation sees a valid value
   CURRENT_INDEX = index;
 
   lightboxAnimating = true;
-  if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
-  _lightboxAnimTimer = setTimeout(() => {
-    console.warn('lightbox animation timeout fallback - resetting state');
+
+  // per-call timer which will finalize if transitionend not fired
+  let localTimer = setTimeout(() => {
+    console.warn('lightbox animation timeout fallback - finalizing animation');
+    // ensure we clear the global ref
+    if (_lightboxAnimTimer === localTimer) _lightboxAnimTimer = null;
+    // attempt to cleanup visible/in-progress states: remove any exit classes and force visible on new image
+    const wrapLocal = document.querySelector('.lightbox-image-wrap');
+    const newImgLocal = wrapLocal?.querySelector('.lightbox-image:not(.old)');
+    const existingLocal = wrapLocal?.querySelector('img.old');
+    if (newImgLocal) {
+      newImgLocal.classList.add('visible');
+      newImgLocal.style.opacity = '1';
+    }
+    if (existingLocal && existingLocal.parentNode) existingLocal.parentNode.removeChild(existingLocal);
     lightboxAnimating = false;
-    _lightboxAnimTimer = null;
-  }, 3000);
+  }, 3500);
+
+  // store it globally so other code can clear if needed
+  _lightboxAnimTimer = localTimer;
 
   const item = IMAGE_URLS[index] || {};
   const url = item.url;
   const direction = options.direction || null;
   const sourceEl = options.sourceEl || null;
   const openZoom = !!options.openZoom;
-  const existing = wrap.querySelector('img.lightbox-image');
+  const wrapExisting = wrap.querySelector('img.lightbox-image');
 
-  console.debug('showImageAtIndex', { index, url, direction, openZoom, existingPresent: !!existing, item });
+  console.debug('showImageAtIndex', { index, url, direction, openZoom, existingPresent: !!wrapExisting, item });
 
   if (!url) {
     console.error('showImageAtIndex: missing url for', item);
     toast('Image not available');
-    if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
+    clearTimeout(localTimer);
+    _lightboxAnimTimer = null;
     lightboxAnimating = false;
     return;
   }
 
+  // spinner
   const spinner = document.createElement('div');
   spinner.className = 'small-spinner';
   spinner.style.margin = '10px auto';
   spinner.setAttribute('aria-hidden', 'true');
 
+  // new image element
   const newImg = document.createElement('img');
   newImg.className = 'lightbox-image';
   newImg.alt = item.alt || 'Lightbox image';
@@ -472,10 +459,17 @@ function showImageAtIndex(index, options = {}) {
   newImg.style.transition = 'transform .42s cubic-bezier(.2,.9,.25,1), opacity .32s ease';
   newImg.style.opacity = '0';
   newImg.style.willChange = 'transform, opacity';
+  // ensure it's above existing image
+  newImg.style.zIndex = '1330';
+  if (wrapExisting) wrapExisting.style.zIndex = '1320';
 
+  // finalize closure
   const finalize = () => {
     if (spinner.parentNode) spinner.remove();
+    // if existing is present and not same as newImg, remove it
+    const existing = wrap.querySelector('img.lightbox-image.old') || wrap.querySelector('img.lightbox-image.visible:not([data-fileid="' + newImg.dataset.fileid + '"])');
     if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+    if (localTimer) { clearTimeout(localTimer); localTimer = null; }
     if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
     lightboxAnimating = false;
     CURRENT_INDEX = index;
@@ -485,6 +479,7 @@ function showImageAtIndex(index, options = {}) {
     console.error('Lightbox image failed to load', url, ev);
     if (spinner.parentNode) spinner.remove();
     if (newImg.parentNode) newImg.parentNode.removeChild(newImg);
+    if (localTimer) { clearTimeout(localTimer); localTimer = null; }
     if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
     lightboxAnimating = false;
     toast('Failed to load image (see console)');
@@ -497,13 +492,15 @@ function showImageAtIndex(index, options = {}) {
   newImg.addEventListener('transitionend', onTransitionEnd);
 
   newImg.onload = () => {
-    // no-op: animation handles visibility
+    // no-op; animation handles visibility; loaded image is ready for transition
   };
 
+  // set src early so browser starts fetching
   try {
     newImg.src = url;
   } catch (errSrc) {
     console.error('Failed to set image src', errSrc, url);
+    if (localTimer) { clearTimeout(localTimer); localTimer = null; }
     if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
     lightboxAnimating = false;
     spinner.remove();
@@ -512,7 +509,15 @@ function showImageAtIndex(index, options = {}) {
 
   wrap.appendChild(spinner);
 
-  // Zoom-from-thumb
+  // If there's already an image showing, mark it as old so we can remove it after
+  if (wrapExisting && wrapExisting !== newImg) {
+    wrapExisting.classList.remove('visible');
+    wrapExisting.classList.add('old');
+    // make sure old is below new
+    wrapExisting.style.zIndex = '1320';
+  }
+
+  // Zoom-from-thumb (pixel-based)
   if (openZoom && sourceEl) {
     try {
       const thumbRect = sourceEl.getBoundingClientRect();
@@ -535,6 +540,8 @@ function showImageAtIndex(index, options = {}) {
       requestAnimationFrame(() => {
         newImg.style.transform = 'translate(0px, 0px) scale(1)';
         newImg.style.opacity = '1';
+        // ensure visible class is present after a tick
+        setTimeout(() => newImg.classList.add('visible'), 50);
       });
       return;
     } catch (errZoom) {
@@ -542,26 +549,32 @@ function showImageAtIndex(index, options = {}) {
     }
   }
 
-  // Slide transition
-  if (existing && direction) {
+  // Slide transition when existing image present
+  if (wrapExisting && direction) {
     if (!newImg.parentNode) wrap.appendChild(newImg);
     if (direction === 'left') newImg.classList.add('enter-from-right');
     else newImg.classList.add('enter-from-left');
 
+    // ensure start state registered
     void newImg.offsetWidth;
 
     requestAnimationFrame(() => {
-      if (direction === 'left') existing.classList.add('exit-to-left');
-      else existing.classList.add('exit-to-right');
-      existing.classList.remove('visible');
-
+      if (direction === 'left') {
+        wrapExisting.classList.add('exit-to-left');
+      } else {
+        wrapExisting.classList.add('exit-to-right');
+      }
+      // bring new in
       newImg.classList.remove('enter-from-right', 'enter-from-left');
       newImg.classList.add('visible');
+      newImg.style.opacity = '1';
+      // safety: if transitionend doesn't fire, finalize will be invoked by localTimer
     });
+
     return;
   }
 
-  // Default fade/pop-in
+  // Default fade/pop-in (no existing image)
   if (!newImg.parentNode) wrap.appendChild(newImg);
   newImg.style.transform = 'translate(0px, 0px) scale(0.98)';
   newImg.style.opacity = '0';
@@ -569,10 +582,11 @@ function showImageAtIndex(index, options = {}) {
   requestAnimationFrame(() => {
     newImg.style.transform = 'translate(0px, 0px) scale(1)';
     newImg.style.opacity = '1';
+    newImg.classList.add('visible');
   });
 }
 
-/* NAVIGATION: next/prev with robust index resolution */
+/* Navigation */
 async function nextImage() {
   if (lightboxAnimating) return;
 
@@ -588,7 +602,6 @@ async function nextImage() {
   if (HAS_MORE && !loading.gallery) {
     const prevLen = IMAGE_URLS.length;
     await loadGallery(NEXT_START, LOAD_MORE_COUNT);
-    // re-resolve index by fileId (in case array shifted)
     current = resolveCurrentIndex();
     if (IMAGE_URLS.length > prevLen) {
       const newIndex = Math.min(IMAGE_URLS.length - 1, current + 1);
@@ -649,7 +662,7 @@ async function deleteCurrentImage() {
   }
 }
 
-/* NOTES (on-demand modal) */
+/* Notes: unchanged behaviour */
 async function openNoteModal(fileId) {
   if (!fileId || !CURRENT_USER || !SKYSAFE_TOKEN) return;
   const modal = document.getElementById('noteModal');
@@ -661,7 +674,6 @@ async function openNoteModal(fileId) {
   const spinner = document.getElementById('noteSpinner');
 
   modal.dataset.fileid = String(fileId);
-
   modal.classList.remove('hidden');
   modal.setAttribute('aria-hidden', 'false');
 
@@ -874,7 +886,7 @@ async function saveTheme(theme) {
   } finally { enableUI(); }
 }
 
-/* Wire drag-drop overlay - only show for file drags */
+/* Drag overlay */
 let dragCounter = 0;
 function wireDragOverlay() {
   const overlay = document.getElementById('fullDropOverlay');
@@ -900,7 +912,7 @@ function wireDragOverlay() {
   });
 }
 
-/* Camera functions */
+/* Camera */
 async function startCamera() {
   if (cameraStarting) return;
   cameraStarting = true;
@@ -927,7 +939,7 @@ function capturePhoto() {
   c.toBlob(blob => { const file = new File([blob], `camera_${Date.now()}.png`, { type: 'image/png' }); uploadImage(file); }, 'image/png');
 }
 
-/* Service worker registration (non-invasive) */
+/* Service worker registration */
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   try {
@@ -944,7 +956,7 @@ async function registerServiceWorker() {
   }
 }
 
-/* Bind UI controls and add swipe handlers */
+/* Bind UI */
 function bindUI() {
   const loginForm = document.getElementById('loginForm');
   const signupToggleBtn = document.getElementById('signupToggleBtn');
@@ -992,12 +1004,10 @@ function bindUI() {
     if (fid) await saveNoteFromModal(fid);
   });
 
-  // simple lightbox buttons
   document.querySelectorAll('.lightbox-close').forEach(b => b.addEventListener('click', closeLightbox));
   document.querySelectorAll('.lightbox-nav.prev').forEach(b => b.addEventListener('click', prevImage));
   document.querySelectorAll('.lightbox-nav.next').forEach(b => b.addEventListener('click', () => nextImage()));
 
-  // keyboard navigation
   document.addEventListener('keydown', (e) => {
     const lb = document.getElementById('lightbox');
     if (!lb || lb.classList.contains('hidden')) return;
@@ -1006,23 +1016,14 @@ function bindUI() {
     if (e.key === 'ArrowLeft') prevImage();
   });
 
-  // Attach swipe handlers to the lightbox container only
   const lb = document.getElementById('lightbox');
-
   const attachSwipe = (el) => {
     if (!el) return;
     try { el.style.touchAction = 'pan-y'; } catch (e) {}
-
     if (window.PointerEvent) {
       let pointerDown = false;
       let startX = 0, startY = 0;
-
-      el.addEventListener('pointerdown', (e) => {
-        startX = e.clientX;
-        startY = e.clientY;
-        pointerDown = true;
-      });
-
+      el.addEventListener('pointerdown', (e) => { startX = e.clientX; startY = e.clientY; pointerDown = true; });
       el.addEventListener('pointerup', (e) => {
         if (!pointerDown) return;
         pointerDown = false;
@@ -1031,7 +1032,6 @@ function bindUI() {
         const absX = Math.abs(dx), absY = Math.abs(dy);
         if (absX > 50 && absX > absY) { if (dx < 0) nextImage(); else prevImage(); }
       });
-
       el.addEventListener('pointercancel', () => { pointerDown = false; });
     } else {
       let tStartX = 0, tStartY = 0;
