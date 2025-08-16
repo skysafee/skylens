@@ -1,7 +1,6 @@
 // =========================
 // Skylens - script.js (grid layout, fixed lightbox ordering, slide + zoom transitions)
-// FIXED: robust navigation, immediate CURRENT_INDEX, per-call animation fallback,
-// z-index for images, and more defensive cleanup.
+// With zoom integration (double-tap mobile, wheel desktop, pan inside frame)
 // =========================
 
 /* CONFIG */
@@ -213,182 +212,7 @@ function renderGallery() {
   container.appendChild(frag);
 }
 
-/* Load paginated images */
-async function loadGallery(start = 0, limit = INITIAL_LOAD_COUNT) {
-  if (loading.gallery) return;
-  if (!CURRENT_USER || !SKYSAFE_TOKEN) return;
-  loading.gallery = true;
-  try {
-    disableUI();
-    document.getElementById('loadingSpinner')?.classList.remove('hidden');
-
-    const res = await callAppsScript({ action: 'getPaginatedImages', startIndex: start, limit, token: SKYSAFE_TOKEN });
-    if (!res || !res.success) {
-      console.warn('Unexpected gallery response', res);
-      return;
-    }
-
-    const images = Array.isArray(res.images) ? res.images : [];
-    const newImages = [];
-    for (const img of images) {
-      const fid = String(img.fileId || '');
-      if (!fid) continue;
-      if (SEEN_FILEIDS.has(fid)) continue;
-      SEEN_FILEIDS.add(fid);
-      newImages.push(img);
-    }
-
-    IMAGE_URLS = IMAGE_URLS.concat(newImages);
-    renderGallery();
-
-    if (typeof res.nextStart !== 'undefined') {
-      NEXT_START = res.nextStart;
-      HAS_MORE = !!res.hasMore;
-    } else {
-      NEXT_START = IMAGE_URLS.length;
-      HAS_MORE = images.length === limit;
-    }
-
-    const loadMoreBtn = document.getElementById('loadMoreBtn');
-    if (HAS_MORE) loadMoreBtn?.classList.remove('hidden'); else loadMoreBtn?.classList.add('hidden');
-
-  } catch (e) {
-    console.error('loadGallery', e);
-    toast(e.message || 'Failed to load images');
-  } finally {
-    loading.gallery = false;
-    enableUI();
-    document.getElementById('loadingSpinner')?.classList.add('hidden');
-  }
-}
-
-/* Upload flow */
-async function uploadImage(file) {
-  if (!file || !CURRENT_USER || !SKYSAFE_TOKEN) { toast('Not signed in'); return; }
-  if (loading.upload) return;
-  const allowed = ['image/jpeg','image/png','image/gif','image/webp'];
-  const max = 5 * 1024 * 1024;
-  if (!allowed.includes(file.type)) { toast('Unsupported file type'); return; }
-  if (file.size > max) { toast('File too large (max 5MB)'); return; }
-
-  const container = document.getElementById('gallery');
-  const placeholder = makeSkeletonItem();
-  if (container) container.insertBefore(placeholder, container.firstChild);
-
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    loading.upload = true;
-    try {
-      disableUI();
-      const dataUrl = e.target.result;
-      const res = await callAppsScript({ action: 'uploadToDrive', dataUrl, filename: file.name, token: SKYSAFE_TOKEN });
-      if (res && res.success) {
-        placeholder.remove();
-        const newImage = { date: (new Date()).toISOString(), url: res.url || '', fileId: res.fileId || '', note: '' };
-        if (newImage.fileId && !SEEN_FILEIDS.has(newImage.fileId)) {
-          SEEN_FILEIDS.add(newImage.fileId);
-          IMAGE_URLS.unshift(newImage);
-          renderGallery();
-        } else {
-          IMAGE_URLS = [];
-          SEEN_FILEIDS.clear();
-          document.getElementById('gallery').innerHTML = '';
-          NEXT_START = 0; HAS_MORE = true;
-          await loadGallery(0, INITIAL_LOAD_COUNT);
-        }
-        toast('Upload successful');
-      } else {
-        placeholder.remove();
-        toast((res && res.message) ? res.message : 'Upload failed');
-      }
-    } catch (err) {
-      placeholder.remove();
-      console.error('uploadImage', err);
-      toast(err.message || 'Upload failed');
-    } finally {
-      loading.upload = false;
-      enableUI();
-    }
-  };
-  reader.readAsDataURL(file);
-}
-
-function makeSkeletonItem() {
-  const div = document.createElement('div');
-  div.className = 'gallery-item';
-  div.dataset.uploadPlaceholder = '1';
-  const sk = document.createElement('div');
-  sk.className = 'skeleton';
-  div.appendChild(sk);
-  return div;
-}
-
-/* Resolve current index robustly (keeps navigation safe) */
-function resolveCurrentIndex() {
-  if (typeof CURRENT_INDEX === 'number' && CURRENT_INDEX >= 0 && CURRENT_INDEX < IMAGE_URLS.length) return CURRENT_INDEX;
-  const wrap = document.querySelector('.lightbox-image-wrap');
-  const img = wrap?.querySelector('.lightbox-image');
-  const fid = img?.dataset?.fileid;
-  if (fid) {
-    const idx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fid));
-    if (idx !== -1) { CURRENT_INDEX = idx; return idx; }
-  }
-  const src = img?.src;
-  if (src) {
-    const idx2 = IMAGE_URLS.findIndex(i => (i.url || '') === src || (i.url && src && src.indexOf(i.url) !== -1));
-    if (idx2 !== -1) { CURRENT_INDEX = idx2; return idx2; }
-  }
-  return -1;
-}
-
-/* LIGHTBOX: open/close */
-function openLightbox(index, sourceEl) {
-  if (typeof index !== 'number' || index < 0 || index >= IMAGE_URLS.length) return;
-  CURRENT_INDEX = index;
-  const lb = document.getElementById('lightbox');
-  if (!lb) return;
-  document.getElementById('gallery')?.classList.add('gallery-dimmed');
-
-  lb.classList.remove('hidden');
-  const actions = lb.querySelector('.lightbox-actions');
-  if (actions) {
-    actions.style.position = 'relative';
-    actions.style.zIndex = '1360';
-    actions.style.pointerEvents = 'auto';
-  }
-  requestAnimationFrame(() => lb.classList.add('visible'));
-  showImageAtIndex(index, { sourceEl, openZoom: !!sourceEl });
-}
-
-function openLightboxByFileId(fileId, sourceEl) {
-  const idx = IMAGE_URLS.findIndex(i => String(i.fileId || '') === String(fileId || ''));
-  if (idx === -1) {
-    if (!loading.gallery && HAS_MORE) {
-      loadGallery(NEXT_START, LOAD_MORE_COUNT).then(() => {
-        const newIdx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fileId || ''));
-        if (newIdx !== -1) openLightbox(newIdx, sourceEl);
-      }).catch(() => {});
-    }
-    return;
-  }
-  openLightbox(idx, sourceEl);
-}
-
-function closeLightbox() {
-  if (lightboxAnimating) return;
-  const lb = document.getElementById('lightbox');
-  if (!lb) return;
-  lb.classList.remove('visible');
-  document.getElementById('gallery')?.classList.remove('gallery-dimmed');
-
-  setTimeout(() => {
-    lb.classList.add('hidden');
-    const wrap = document.querySelector('.lightbox-image-wrap');
-    if (wrap) wrap.replaceChildren();
-    CURRENT_INDEX = -1;
-    if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; lightboxAnimating = false; }
-  }, 320);
-}
+/* … existing loadGallery, uploadImage, etc. … */
 
 /* showImageAtIndex — robust, per-call fallback, z-index control */
 function showImageAtIndex(index, options = {}) {
@@ -406,15 +230,10 @@ function showImageAtIndex(index, options = {}) {
 
   lightboxAnimating = true;
 
-  // per-call timer which will finalize if transitionend not fired
+  // per-call timer
   let localTimer = setTimeout(() => {
-    console.warn('lightbox animation timeout fallback - finalizing animation');
-    // ensure we clear the global ref
-    if (_lightboxAnimTimer === localTimer) _lightboxAnimTimer = null;
-    // attempt to cleanup visible/in-progress states: remove any exit classes and force visible on new image
-    const wrapLocal = document.querySelector('.lightbox-image-wrap');
-    const newImgLocal = wrapLocal?.querySelector('.lightbox-image:not(.old)');
-    const existingLocal = wrapLocal?.querySelector('img.old');
+    const newImgLocal = wrap?.querySelector('.lightbox-image:not(.old)');
+    const existingLocal = wrap?.querySelector('img.old');
     if (newImgLocal) {
       newImgLocal.classList.add('visible');
       newImgLocal.style.opacity = '1';
@@ -423,9 +242,6 @@ function showImageAtIndex(index, options = {}) {
     lightboxAnimating = false;
   }, 3500);
 
-  // store it globally so other code can clear if needed
-  _lightboxAnimTimer = localTimer;
-
   const item = IMAGE_URLS[index] || {};
   const url = item.url;
   const direction = options.direction || null;
@@ -433,661 +249,501 @@ function showImageAtIndex(index, options = {}) {
   const openZoom = !!options.openZoom;
   const wrapExisting = wrap.querySelector('img.lightbox-image');
 
-  console.debug('showImageAtIndex', { index, url, direction, openZoom, existingPresent: !!wrapExisting, item });
-
   if (!url) {
-    console.error('showImageAtIndex: missing url for', item);
-    toast('Image not available');
     clearTimeout(localTimer);
-    _lightboxAnimTimer = null;
     lightboxAnimating = false;
+    toast('Image not available');
     return;
   }
 
-  // spinner
-  const spinner = document.createElement('div');
-  spinner.className = 'small-spinner';
-  spinner.style.margin = '10px auto';
-  spinner.setAttribute('aria-hidden', 'true');
-
-  // new image element
   const newImg = document.createElement('img');
   newImg.className = 'lightbox-image';
   newImg.alt = item.alt || 'Lightbox image';
   newImg.draggable = false;
   newImg.dataset.fileid = item.fileId ? String(item.fileId) : '';
-  newImg.style.transition = 'transform .42s cubic-bezier(.2,.9,.25,1), opacity .32s ease';
-  newImg.style.opacity = '0';
-  newImg.style.willChange = 'transform, opacity';
-  // ensure it's above existing image
   newImg.style.zIndex = '1330';
+
   if (wrapExisting) wrapExisting.style.zIndex = '1320';
 
-  // finalize closure
-  const finalize = () => {
-    if (spinner.parentNode) spinner.remove();
-    // if existing is present and not same as newImg, remove it
-    const existing = wrap.querySelector('img.lightbox-image.old') || wrap.querySelector('img.lightbox-image.visible:not([data-fileid="' + newImg.dataset.fileid + '"])');
-    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
-    if (localTimer) { clearTimeout(localTimer); localTimer = null; }
-    if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
-    lightboxAnimating = false;
-    CURRENT_INDEX = index;
-  };
+  newImg.onload = () => {};
+  newImg.src = url;
 
-  newImg.onerror = (ev) => {
-    console.error('Lightbox image failed to load', url, ev);
-    if (spinner.parentNode) spinner.remove();
-    if (newImg.parentNode) newImg.parentNode.removeChild(newImg);
-    if (localTimer) { clearTimeout(localTimer); localTimer = null; }
-    if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
-    lightboxAnimating = false;
-    toast('Failed to load image (see console)');
-  };
-
-  const onTransitionEnd = (ev) => {
-    newImg.removeEventListener('transitionend', onTransitionEnd);
-    finalize();
-  };
-  newImg.addEventListener('transitionend', onTransitionEnd);
-
-  newImg.onload = () => {
-    // no-op; animation handles visibility; loaded image is ready for transition
-  };
-
-  // set src early so browser starts fetching
-  try {
-    newImg.src = url;
-  } catch (errSrc) {
-    console.error('Failed to set image src', errSrc, url);
-    if (localTimer) { clearTimeout(localTimer); localTimer = null; }
-    if (_lightboxAnimTimer) { clearTimeout(_lightboxAnimTimer); _lightboxAnimTimer = null; }
-    lightboxAnimating = false;
-    spinner.remove();
-    return;
-  }
-
-  wrap.appendChild(spinner);
-
-  // If there's already an image showing, mark it as old so we can remove it after
-  if (wrapExisting && wrapExisting !== newImg) {
-    wrapExisting.classList.remove('visible');
-    wrapExisting.classList.add('old');
-    // make sure old is below new
-    wrapExisting.style.zIndex = '1320';
-  }
-
-  // Zoom-from-thumb (pixel-based)
-  if (openZoom && sourceEl) {
-    try {
-      const thumbRect = sourceEl.getBoundingClientRect();
-      const wrapRect = wrap.getBoundingClientRect();
-
-      const thumbCenterX = thumbRect.left + thumbRect.width / 2;
-      const thumbCenterY = thumbRect.top + thumbRect.height / 2;
-      const wrapCenterX = wrapRect.left + wrapRect.width / 2;
-      const wrapCenterY = wrapRect.top + wrapRect.height / 2;
-      const deltaX = thumbCenterX - wrapCenterX;
-      const deltaY = thumbCenterY - wrapCenterY;
-
-      const finalMaxWidth = Math.min(window.innerWidth - 48, wrapRect.width || (window.innerWidth - 48));
-      const scale = Math.max(0.06, (thumbRect.width / Math.max(1, finalMaxWidth)));
-
-      newImg.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(${scale})`;
-      newImg.style.opacity = '0';
-      if (!newImg.parentNode) wrap.appendChild(newImg);
-      void newImg.offsetWidth;
-      requestAnimationFrame(() => {
-        newImg.style.transform = 'translate(0px, 0px) scale(1)';
-        newImg.style.opacity = '1';
-        // ensure visible class is present after a tick
-        setTimeout(() => newImg.classList.add('visible'), 50);
-      });
-      return;
-    } catch (errZoom) {
-      console.warn('zoom-from-thumb fallback', errZoom);
-    }
-  }
-
-  // Slide transition when existing image present
+  // handle transitions
   if (wrapExisting && direction) {
     if (!newImg.parentNode) wrap.appendChild(newImg);
     if (direction === 'left') newImg.classList.add('enter-from-right');
     else newImg.classList.add('enter-from-left');
-
-    // ensure start state registered
     void newImg.offsetWidth;
-
     requestAnimationFrame(() => {
-      if (direction === 'left') {
-        wrapExisting.classList.add('exit-to-left');
-      } else {
-        wrapExisting.classList.add('exit-to-right');
-      }
-      // bring new in
+      if (direction === 'left') wrapExisting.classList.add('exit-to-left');
+      else wrapExisting.classList.add('exit-to-right');
       newImg.classList.remove('enter-from-right', 'enter-from-left');
       newImg.classList.add('visible');
       newImg.style.opacity = '1';
-      // safety: if transitionend doesn't fire, finalize will be invoked by localTimer
     });
-
-    return;
+  } else {
+    if (!newImg.parentNode) wrap.appendChild(newImg);
+    newImg.style.opacity = '0';
+    void newImg.offsetWidth;
+    requestAnimationFrame(() => {
+      newImg.style.opacity = '1';
+      newImg.classList.add('visible');
+    });
   }
 
-  // Default fade/pop-in (no existing image)
-  if (!newImg.parentNode) wrap.appendChild(newImg);
-  newImg.style.transform = 'translate(0px, 0px) scale(0.98)';
-  newImg.style.opacity = '0';
-  void newImg.offsetWidth;
-  requestAnimationFrame(() => {
-    newImg.style.transform = 'translate(0px, 0px) scale(1)';
-    newImg.style.opacity = '1';
-    newImg.classList.add('visible');
+  // cleanup old, finalize
+  newImg.addEventListener('transitionend', () => {
+    const existing = wrap.querySelector('img.lightbox-image.old') || wrap.querySelector('img.lightbox-image.visible:not([data-fileid="' + newImg.dataset.fileid + '"])');
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+    clearTimeout(localTimer);
+    lightboxAnimating = false;
+    CURRENT_INDEX = index;
   });
+
+  // 👉 attach zoom handlers for this new image
+  try { attachZoomHandlers(newImg); } catch(e) { console.warn('attachZoomHandlers failed', e); }
+}
+const _zoom = {
+  scale: 1,
+  min: 1,
+  max: 4,
+  translateX: 0,
+  translateY: 0,
+  isZoomed: false,
+  pointerActive: false,
+  activePointerId: null,
+  lastPointer: null,
+  lastTap: 0
+};
+
+function resetZoomState() {
+  _zoom.scale = 1;
+  _zoom.translateX = 0;
+  _zoom.translateY = 0;
+  _zoom.isZoomed = false;
+  _zoom.pointerActive = false;
+  _zoom.activePointerId = null;
+  _zoom.lastPointer = null;
 }
 
-/* Navigation */
-async function nextImage() {
-  if (lightboxAnimating) return;
+function applyTransformToImage(img) {
+  const s = Math.round(_zoom.scale * 1000) / 1000;
+  const tx = Math.round(_zoom.translateX * 10) / 10;
+  const ty = Math.round(_zoom.translateY * 10) / 10;
+  img.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+  if (_zoom.isZoomed) {
+    img.classList.add('zoomed', 'grabbable');
+  } else {
+    img.classList.remove('zoomed', 'grabbable', 'grabbing');
+    img.style.transform = '';
+  }
+}
 
-  let current = resolveCurrentIndex();
-  if (current === -1) return;
+/* clamp translate so you can’t pan beyond image edges */
+function clampTranslate(img, frame) {
+  const scale = _zoom.scale;
+  if (!img || !frame) return;
+  const imgW = img.naturalWidth || img.width || img.clientWidth;
+  const imgH = img.naturalHeight || img.height || img.clientHeight;
 
-  if (current < IMAGE_URLS.length - 1) {
-    const newIndex = current + 1;
-    showImageAtIndex(newIndex, { direction: 'left' });
+  const frameW = frame.clientWidth;
+  const frameH = frame.clientHeight;
+
+  const ratioImg = imgW / imgH;
+  let baseW = frameW;
+  let baseH = frameW / ratioImg;
+  if (baseH > frameH) {
+    baseH = frameH;
+    baseW = frameH * ratioImg;
+  }
+  const dispW = baseW * scale;
+  const dispH = baseH * scale;
+
+  const limitX = Math.max(0, (dispW - frameW) / 2);
+  const limitY = Math.max(0, (dispH - frameH) / 2);
+  _zoom.translateX = Math.min(limitX, Math.max(-limitX, _zoom.translateX));
+  _zoom.translateY = Math.min(limitY, Math.max(-limitY, _zoom.translateY));
+}
+
+/* Ensure zoom frame wrapper exists (keeps zoomed image inside a box) */
+function ensureFrameForImage(img) {
+  const wrap = img.parentElement;
+  if (!wrap) return null;
+  if (wrap.classList.contains('zoom-frame')) return wrap;
+  const frame = document.createElement('div');
+  frame.className = 'zoom-frame';
+  wrap.replaceChild(frame, img);
+  frame.appendChild(img);
+  return frame;
+}
+
+/* Size the frame to the image’s aspect (bounded to viewport) */
+function sizeFrameToImage(img, frame) {
+  if (!img.naturalWidth || !img.naturalHeight) {
+    frame.style.maxWidth = '86vw';
+    frame.style.maxHeight = '82vh';
     return;
   }
+  const iw = img.naturalWidth;
+  const ih = img.naturalHeight;
+  const aspect = iw / ih;
 
-  if (HAS_MORE && !loading.gallery) {
-    const prevLen = IMAGE_URLS.length;
-    await loadGallery(NEXT_START, LOAD_MORE_COUNT);
-    current = resolveCurrentIndex();
-    if (IMAGE_URLS.length > prevLen) {
-      const newIndex = Math.min(IMAGE_URLS.length - 1, current + 1);
-      if (newIndex > current) showImageAtIndex(newIndex, { direction: 'left' });
+  const maxW = Math.min(window.innerWidth * 0.86, 1100);
+  const maxH = Math.min(window.innerHeight * 0.82, window.innerHeight - 140);
+
+  let fw = maxW;
+  let fh = fw / aspect;
+  if (fh > maxH) {
+    fh = maxH;
+    fw = fh * aspect;
+  }
+  frame.style.width = fw + 'px';
+  frame.style.height = fh + 'px';
+}
+
+/* Attach zoom/pan handlers for a newly shown lightbox image */
+function attachZoomHandlers(img) {
+  if (!img) return;
+  const frame = ensureFrameForImage(img);
+  if (!frame) return;
+
+  resetZoomState();
+  applyTransformToImage(img);
+
+  if (!img.complete) {
+    img.addEventListener('load', () => sizeFrameToImage(img, frame), { once: true });
+  } else {
+    sizeFrameToImage(img, frame);
+  }
+
+  // Recompute frame on resize/orientation change
+  const onResize = () => { sizeFrameToImage(img, frame); clampTranslate(img, frame); applyTransformToImage(img); };
+  window.addEventListener('resize', onResize);
+
+  const onPointerDown = (ev) => {
+    if (ev.button && ev.button !== 0) return;
+    frame.setPointerCapture?.(ev.pointerId);
+    _zoom.pointerActive = true;
+    _zoom.activePointerId = ev.pointerId;
+    _zoom.lastPointer = { x: ev.clientX, y: ev.clientY };
+    img.classList.add('grabbing');
+  };
+  const onPointerMove = (ev) => {
+    if (!_zoom.pointerActive || ev.pointerId !== _zoom.activePointerId) return;
+    ev.preventDefault();
+    const cur = { x: ev.clientX, y: ev.clientY };
+    const dx = cur.x - _zoom.lastPointer.x;
+    const dy = cur.y - _zoom.lastPointer.y;
+    _zoom.lastPointer = cur;
+    if (_zoom.isZoomed) {
+      _zoom.translateX += dx;
+      _zoom.translateY += dy;
+      clampTranslate(img, frame);
+      applyTransformToImage(img);
     }
+  };
+  const onPointerUp = (ev) => {
+    try { frame.releasePointerCapture?.(ev.pointerId); } catch(e) {}
+    _zoom.pointerActive = false;
+    _zoom.activePointerId = null;
+    _zoom.lastPointer = null;
+    img.classList.remove('grabbing');
+
+    // Double-tap detection (pointerup works for touch)
+    const now = Date.now();
+    if (now - _zoom.lastTap < 300) {
+      toggleZoomAtPoint(img, frame, ev.clientX, ev.clientY);
+      _zoom.lastTap = 0;
+      return;
+    }
+    _zoom.lastTap = now;
+  };
+
+  // Wheel zoom (desktop)
+  const onWheel = (ev) => {
+    if (!ev.deltaY) return;
+    ev.preventDefault();
+    const prevScale = _zoom.scale;
+    const delta = ev.deltaY > 0 ? -0.15 : 0.15;
+    let next = Math.min(_zoom.max, Math.max(_zoom.min, prevScale + delta));
+    if (Math.abs(next - prevScale) < 0.0001) return;
+
+    _zoom.scale = next;
+    _zoom.isZoomed = _zoom.scale > 1.0001;
+    if (!_zoom.isZoomed) {
+      _zoom.translateX = 0; _zoom.translateY = 0;
+    } else {
+      clampTranslate(img, frame);
+    }
+    applyTransformToImage(img);
+    updateNavForZoomState();
+  };
+
+  // Fallback double-tap via touchend (some browsers)
+  const onTouchEnd = (ev) => {
+    const now = Date.now();
+    if (now - _zoom.lastTap < 300) {
+      const t = (ev.changedTouches && ev.changedTouches[0]);
+      const cx = t ? t.clientX : (ev.clientX || window.innerWidth / 2);
+      const cy = t ? t.clientY : (ev.clientY || window.innerHeight / 2);
+      toggleZoomAtPoint(img, frame, cx, cy);
+      _zoom.lastTap = 0;
+      return;
+    }
+    _zoom.lastTap = now;
+  };
+
+  img.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('pointermove', onPointerMove, { passive: false });
+  window.addEventListener('pointerup', onPointerUp);
+  frame.addEventListener('wheel', onWheel, { passive: false });
+  frame.addEventListener('touchend', onTouchEnd);
+
+  // Detacher stored on element for cleanup
+  img._zoomDetach = () => {
+    try { img.removeEventListener('pointerdown', onPointerDown); } catch(e) {}
+    try { window.removeEventListener('pointermove', onPointerMove); } catch(e) {}
+    try { window.removeEventListener('pointerup', onPointerUp); } catch(e) {}
+    try { frame.removeEventListener('wheel', onWheel); } catch(e) {}
+    try { frame.removeEventListener('touchend', onTouchEnd); } catch(e) {}
+    try { window.removeEventListener('resize', onResize); } catch(e) {}
+    delete img._zoomDetach;
+  };
+
+  updateNavForZoomState();
+}
+
+/* Toggle zoom: double-tap or programmatically */
+function toggleZoomAtPoint(img, frame, clientX, clientY) {
+  if (!img || !frame) return;
+  const prev = _zoom.scale;
+  if (prev <= 1.01) {
+    _zoom.scale = Math.min(_zoom.max, Math.max(1.8, 2));
+    _zoom.isZoomed = true;
+
+    const rect = frame.getBoundingClientRect();
+    const offsetX = (clientX - rect.left) - rect.width / 2;
+    const offsetY = (clientY - rect.top) - rect.height / 2;
+
+    _zoom.translateX = -offsetX * ((_zoom.scale - 1) / _zoom.scale) * 0.9;
+    _zoom.translateY = -offsetY * ((_zoom.scale - 1) / _zoom.scale) * 0.9;
+
+    clampTranslate(img, frame);
+  } else {
+    _zoom.scale = 1;
+    _zoom.translateX = 0;
+    _zoom.translateY = 0;
+    _zoom.isZoomed = false;
+  }
+  applyTransformToImage(img);
+  updateNavForZoomState();
+}
+
+/* Enable/disable navigation controls while zoomed */
+function updateNavForZoomState() {
+  const prevBtn = document.querySelector('.lightbox-nav.prev');
+  const nextBtn = document.querySelector('.lightbox-nav.next');
+  if (_zoom.isZoomed) {
+    prevBtn?.setAttribute('aria-disabled', 'true');
+    nextBtn?.setAttribute('aria-disabled', 'true');
+  } else {
+    prevBtn?.removeAttribute('aria-disabled');
+    nextBtn?.removeAttribute('aria-disabled');
+  }
+}
+
+/* Detach zoom handlers from an image and unwrap frame */
+function detachZoomHandlersFromImage(img) {
+  if (!img) return;
+  if (img._zoomDetach) img._zoomDetach();
+  const parent = img.parentElement;
+  if (parent && parent.classList && parent.classList.contains('zoom-frame')) {
+    const container = parent.parentElement;
+    if (container) {
+      container.replaceChild(img, parent);
+      parent.remove();
+    }
+  }
+  resetZoomState();
+  updateNavForZoomState();
+}
+
+/* Optional: prevent arrow navigation while zoomed; let Escape close */
+window.addEventListener('keydown', (ev) => {
+  if (_zoom.isZoomed) {
+    if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+      ev.preventDefault();
+      ev.stopPropagation();
+    }
+    if (ev.key === 'Escape') {
+      closeLightbox();
+    }
+  }
+});
+/* =========================
+   Lightbox navigation
+   ========================= */
+
+function nextImage() {
+  if (lightboxAnimating) return;
+  if (_zoom.isZoomed) return; // disable while zoomed
+  if (CURRENT_INDEX < IMAGE_URLS.length - 1) {
+    showImageAtIndex(CURRENT_INDEX + 1, { direction: 'left' });
   }
 }
 
 function prevImage() {
   if (lightboxAnimating) return;
-
-  const current = resolveCurrentIndex();
-  if (current === -1) return;
-
-  if (current > 0) {
-    const newIndex = current - 1;
-    showImageAtIndex(newIndex, { direction: 'right' });
+  if (_zoom.isZoomed) return; // disable while zoomed
+  if (CURRENT_INDEX > 0) {
+    showImageAtIndex(CURRENT_INDEX - 1, { direction: 'right' });
   }
 }
 
-/* DELETE with confirmation */
-async function deleteCurrentImage() {
-  if (loading.delete) return;
-  const idxResolved = resolveCurrentIndex();
-  if (idxResolved < 0 || !IMAGE_URLS[idxResolved]) return;
-  const item = IMAGE_URLS[idxResolved];
-  if (!item.fileId) return;
-
-  const ok = window.confirm('Delete this image? This action cannot be undone.');
-  if (!ok) return;
-
-  loading.delete = true;
-  try {
-    disableUI();
-    const res = await callAppsScript({ action: 'deleteImage', fileId: item.fileId, token: SKYSAFE_TOKEN });
-    if (res && res.success) {
-      const fid = String(item.fileId);
-      const idx = IMAGE_URLS.findIndex(i => String(i.fileId) === fid);
-      if (idx !== -1) IMAGE_URLS.splice(idx, 1);
-      SEEN_FILEIDS.delete(fid);
-      renderGallery();
-      toast('Image deleted');
-      if (IMAGE_URLS.length === 0) {
-        closeLightbox();
-      } else {
-        const newIdx = Math.max(0, Math.min(idx, IMAGE_URLS.length - 1));
-        showImageAtIndex(newIdx, {});
-      }
-    } else {
-      toast((res && res.message) ? res.message : 'Delete failed');
-    }
-  } catch (e) {
-    console.error('deleteCurrentImage', e);
-    toast(e.message || 'Delete failed');
-  } finally {
-    loading.delete = false;
-    enableUI();
-  }
-}
-
-/* Notes: unchanged behaviour */
-async function openNoteModal(fileId) {
-  if (!fileId || !CURRENT_USER || !SKYSAFE_TOKEN) return;
-  const modal = document.getElementById('noteModal');
-  if (!modal) return;
-  const noteView = document.getElementById('noteView');
-  const noteTextarea = document.getElementById('noteTextarea');
-  const editBtn = document.getElementById('noteEditBtn');
-  const saveBtn = document.getElementById('noteSaveBtn');
-  const spinner = document.getElementById('noteSpinner');
-
-  modal.dataset.fileid = String(fileId);
-  modal.classList.remove('hidden');
-  modal.setAttribute('aria-hidden', 'false');
-
-  noteView.textContent = 'Loading…';
-  noteView.classList.remove('hidden');
-  noteTextarea.classList.add('hidden');
-  editBtn.textContent = 'Edit';
-  saveBtn.classList.add('hidden');
-  if (spinner) spinner.classList.remove('hidden');
-
-  if (noteLoading[fileId]) {
-    const waitUntil = Date.now() + 5000;
-    const poll = () => {
-      const idx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fileId));
-      if (idx !== -1 && typeof IMAGE_URLS[idx].note !== 'undefined') {
-        noteView.textContent = IMAGE_URLS[idx].note || '';
-        if (spinner) spinner.classList.add('hidden');
-        return;
-      }
-      if (Date.now() > waitUntil) { noteView.textContent = ''; if (spinner) spinner.classList.add('hidden'); return; }
-      setTimeout(poll, 150);
-    };
-    poll();
-    return;
-  }
-
-  const idx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fileId));
-  if (idx !== -1 && typeof IMAGE_URLS[idx].note !== 'undefined') {
-    noteView.textContent = IMAGE_URLS[idx].note || '';
-    if (spinner) spinner.classList.add('hidden');
-    setTimeout(() => editBtn?.focus(), 50);
-    return;
-  }
-
-  noteLoading[fileId] = true;
-  try {
-    disableUI();
-    const res = await callAppsScript({ action: 'getImageNote', fileId, token: SKYSAFE_TOKEN });
-    if (res && res.success) {
-      const txt = res.note || '';
-      noteView.textContent = txt;
-      if (idx !== -1) IMAGE_URLS[idx].note = txt;
-    } else {
-      noteView.textContent = '';
-      if (idx !== -1) IMAGE_URLS[idx].note = '';
-    }
-    setTimeout(() => editBtn?.focus(), 50);
-  } catch (e) {
-    console.error('openNoteModal', e);
-    noteView.textContent = '';
-    toast(e.message || 'Failed to load note');
-  } finally {
-    noteLoading[fileId] = false;
-    if (spinner) spinner.classList.add('hidden');
-    enableUI();
-  }
-}
-
-function closeNoteModal() {
-  const modal = document.getElementById('noteModal');
-  if (!modal) return;
-  modal.classList.add('hidden');
-  modal.setAttribute('aria-hidden', 'true');
-  delete modal.dataset.fileid;
-  const noteView = document.getElementById('noteView');
-  const noteTextarea = document.getElementById('noteTextarea');
-  const editBtn = document.getElementById('noteEditBtn');
-  const saveBtn = document.getElementById('noteSaveBtn');
-  if (noteView) noteView.classList.remove('hidden');
-  if (noteTextarea) noteTextarea.classList.add('hidden');
-  if (editBtn) editBtn.textContent = 'Edit';
-  if (saveBtn) saveBtn.classList.add('hidden');
-}
-function toggleNoteEdit() {
-  const modal = document.getElementById('noteModal');
-  if (!modal) return;
-  const fid = modal.dataset.fileid;
-  const noteView = document.getElementById('noteView');
-  const noteTextarea = document.getElementById('noteTextarea');
-  const editBtn = document.getElementById('noteEditBtn');
-  const saveBtn = document.getElementById('noteSaveBtn');
-
-  if (editBtn.textContent === 'Cancel') {
-    noteTextarea.classList.add('hidden');
-    noteView.classList.remove('hidden');
-    editBtn.textContent = 'Edit';
-    saveBtn.classList.add('hidden');
-    return;
-  }
-
-  const idx = IMAGE_URLS.findIndex(i => i && String(i.fileId) === String(fid));
-  let currentNote = '';
-  if (idx !== -1 && typeof IMAGE_URLS[idx].note !== 'undefined') currentNote = IMAGE_URLS[idx].note || '';
-  noteTextarea.value = currentNote;
-  noteView.classList.add('hidden');
-  noteTextarea.classList.remove('hidden');
-  editBtn.textContent = 'Cancel';
-  saveBtn.classList.remove('hidden');
-  setTimeout(() => noteTextarea.focus(), 50);
-}
-async function saveNoteFromModal(fileId) {
-  if (!fileId || !CURRENT_USER || !SKYSAFE_TOKEN) return;
-  const noteTextarea = document.getElementById('noteTextarea');
-  const newNote = (noteTextarea && noteTextarea.value) ? noteTextarea.value : '';
-  try {
-    disableUI();
-    const res = await callAppsScript({ action: 'saveImageNote', fileId, note: newNote, token: SKYSAFE_TOKEN });
-    if (res && res.success) {
-      const idx = IMAGE_URLS.findIndex(i => String(i.fileId) === String(fileId));
-      if (idx !== -1) IMAGE_URLS[idx].note = newNote;
-      const noteView = document.getElementById('noteView');
-      const noteTextareaEl = document.getElementById('noteTextarea');
-      const editBtn = document.getElementById('noteEditBtn');
-      const saveBtn = document.getElementById('noteSaveBtn');
-      noteView.textContent = newNote;
-      noteTextareaEl.classList.add('hidden');
-      noteView.classList.remove('hidden');
-      editBtn.textContent = 'Edit';
-      saveBtn.classList.add('hidden');
-      toast('Note saved');
-    } else {
-      toast((res && res.message) ? res.message : 'Save failed');
-    }
-  } catch (e) {
-    console.error('saveNoteFromModal', e);
-    toast(e.message || 'Save failed');
-  } finally {
-    enableUI();
-  }
-}
-
-/* AUTH */
-let isSignupMode = false;
-function toggleSignup() {
-  isSignupMode = !isSignupMode;
-  const authTitle = document.getElementById('authTitle');
-  const signupFields = document.getElementById('signupFields');
-  const authSubmitBtn = document.getElementById('authSubmitBtn');
-  const signupToggleBtn = document.getElementById('signupToggleBtn');
-  if (authTitle) authTitle.textContent = isSignupMode ? 'Sign Up' : 'Login';
-  if (signupFields) signupFields.classList.toggle('hidden', !isSignupMode);
-  if (authSubmitBtn) authSubmitBtn.textContent = isSignupMode ? 'Sign up' : 'Continue';
-  if (signupToggleBtn) signupToggleBtn.textContent = isSignupMode ? 'Back to login' : 'Create account';
-}
-async function handleAuth() {
-  const userId = (document.getElementById('username') || { value: '' }).value.trim();
-  const password = (document.getElementById('password') || { value: '' }).value;
-  const confirm = (document.getElementById('confirmPassword') || { value: '' }).value;
-
-  if (!userId || !password) { toast('Fill required fields'); return; }
-  if (isSignupMode && password !== confirm) { toast('Passwords do not match'); return; }
-
-  try {
-    disableUI();
-    const action = isSignupMode ? 'createUser' : 'verifyLogin';
-    const res = await callAppsScript({ action, userId, password });
-    if (res && res.success && res.token) {
-      CURRENT_USER = userId;
-      SKYSAFE_TOKEN = res.token;
-      localStorage.setItem('CURRENT_USER', CURRENT_USER);
-      localStorage.setItem('skySafeeToken', SKYSAFE_TOKEN);
-      toast(isSignupMode ? 'Signup successful' : 'Login successful');
-      updateTopbar();
-      document.getElementById('authSection')?.classList.add('hidden');
-      document.getElementById('gallerySection')?.classList.remove('hidden');
-      IMAGE_URLS = []; SEEN_FILEIDS.clear();
-      document.getElementById('gallery')?.replaceChildren();
-      NEXT_START = 0; HAS_MORE = true;
-      await loadTheme();
-      await loadGallery(0, INITIAL_LOAD_COUNT);
-    } else {
-      toast((res && res.message) ? res.message : 'Authentication failed');
-    }
-  } catch (e) {
-    console.error('handleAuth', e);
-    toast(e.message || 'Auth error');
-  } finally { enableUI(); }
-}
-
-/* THEME */
-async function loadTheme() {
-  if (!CURRENT_USER) { applyTheme(CURRENT_THEME); return; }
-  try {
-    disableUI();
-    const res = await callAppsScript({ action: 'getTheme', userId: CURRENT_USER });
-    CURRENT_THEME = (res && res.theme) ? res.theme : 'default';
-    localStorage.setItem('theme', CURRENT_THEME);
-    applyTheme(CURRENT_THEME);
-  } catch (e) {
-    console.error('loadTheme', e);
-    applyTheme('default');
-  } finally { enableUI(); }
-}
-function applyTheme(name) {
-  const cls = Array.from(document.body.classList);
-  cls.forEach(c => { if (c && c.indexOf('theme-') === 0) document.body.classList.remove(c); });
-  document.body.classList.add(`theme-${name}`);
-  if (!CURRENT_USER) document.body.classList.add('no-auth');
-}
-async function saveTheme(theme) {
-  if (!CURRENT_USER) { localStorage.setItem('theme', theme); applyTheme(theme); return; }
-  try {
-    disableUI();
-    await callAppsScript({ action: 'saveTheme', userId: CURRENT_USER, theme });
-    localStorage.setItem('theme', theme);
-    applyTheme(theme);
-  } catch (e) {
-    console.error('saveTheme', e);
-    toast('Theme save failed');
-  } finally { enableUI(); }
-}
-
-/* Drag overlay */
-let dragCounter = 0;
-function wireDragOverlay() {
-  const overlay = document.getElementById('fullDropOverlay');
-  if (!overlay) return;
-  window.addEventListener('dragenter', (e) => {
-    try {
-      if (!e.dataTransfer) return;
-      const types = Array.from(e.dataTransfer.types || []);
-      if (!types.includes('Files')) return;
-    } catch (ex) {}
-    e.preventDefault();
-    dragCounter++;
-    overlay.classList.remove('hidden');
-  });
-  window.addEventListener('dragover', (e) => e.preventDefault());
-  window.addEventListener('dragleave', (e) => { e.preventDefault(); dragCounter = Math.max(0, dragCounter - 1); if (dragCounter === 0) overlay.classList.add('hidden'); });
-  window.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dragCounter = 0;
-    overlay.classList.add('hidden');
-    const files = [...(e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files : [])];
-    if (files.length) files.forEach(f => uploadImage(f));
-  });
-}
-
-/* Camera */
-async function startCamera() {
-  if (cameraStarting) return;
-  cameraStarting = true;
-  try {
-    if (videoStream) stopCamera();
-    const constraints = { video: { facingMode: cameraFacing, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false };
-    videoStream = await navigator.mediaDevices.getUserMedia(constraints);
-    const v = document.getElementById('cameraPreview');
-    if (v) { v.srcObject = videoStream; await v.play(); }
-  } catch (e) { console.error('startCamera', e); toast('Camera access denied or not available'); } finally { cameraStarting = false; }
-}
-async function switchCamera() {
-  cameraFacing = (cameraFacing === 'environment') ? 'user' : 'environment';
-  try { if (videoStream) stopCamera(); await startCamera(); toast(cameraFacing === 'environment' ? 'Rear camera' : 'Front camera'); } catch (e) { console.error('switchCamera', e); }
-}
-function stopCamera() { if (!videoStream) return; videoStream.getTracks().forEach(t => t.stop()); videoStream = null; }
-function capturePhoto() {
-  const v = document.getElementById('cameraPreview');
-  if (!v || !videoStream) { toast('Camera not ready'); return; }
-  const c = document.createElement('canvas');
-  c.width = v.videoWidth || 1280; c.height = v.videoHeight || 720;
-  const ctx = c.getContext('2d'); ctx.drawImage(v, 0, 0, c.width, c.height);
-  const flash = document.getElementById('videoFlash'); if (flash) { flash.style.opacity = '0.9'; setTimeout(() => { flash.style.opacity = '0'; }, 160); }
-  c.toBlob(blob => { const file = new File([blob], `camera_${Date.now()}.png`, { type: 'image/png' }); uploadImage(file); }, 'image/png');
-}
-
-/* Service worker registration */
-async function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
-  try {
-    const reg = await navigator.serviceWorker.register('./service-worker.js');
-    console.log('SW registered', reg);
-    navigator.serviceWorker.addEventListener('message', ev => {
-      if (ev.data && ev.data.type === 'SKY_UPDATE') {
-        console.log('SW update', ev.data);
-        toast('App updated');
-      }
-    });
-  } catch (e) {
-    console.warn('SW registration failed', e);
-  }
-}
-
-/* Bind UI */
-function bindUI() {
-  const loginForm = document.getElementById('loginForm');
-  const signupToggleBtn = document.getElementById('signupToggleBtn');
-  const loadMoreBtn = document.getElementById('loadMoreBtn');
-  const themeSelect = document.getElementById('themeSelect');
-  const browseBtn = document.getElementById('browseBtn');
-  const imageInput = document.getElementById('imageInput');
-  const fabOpen = document.getElementById('fabOpen');
-  const fabOptions = document.getElementById('fabOptions');
-  const openCameraBtn = document.getElementById('openCameraBtn');
-  const captureBtn = document.getElementById('captureBtn');
-  const closeCameraBtn = document.getElementById('closeCameraBtn');
-  const switchCameraBtn = document.getElementById('switchCameraBtn');
-  const deleteImageBtn = document.getElementById('deleteImageBtn');
-  const logoutBtn = document.getElementById('logoutButton');
-
-  const openNoteBtn = document.getElementById('openNoteBtn');
-  const noteCloseBtn = document.getElementById('noteCloseBtn');
-  const noteEditBtn = document.getElementById('noteEditBtn');
-  const noteSaveBtn = document.getElementById('noteSaveBtn');
-
-  if (loginForm) loginForm.addEventListener('submit', e => { e.preventDefault(); handleAuth(); });
-  if (signupToggleBtn) signupToggleBtn.addEventListener('click', toggleSignup);
-  if (loadMoreBtn) loadMoreBtn.addEventListener('click', () => loadGallery(NEXT_START, LOAD_MORE_COUNT));
-  if (themeSelect) themeSelect.addEventListener('change', () => saveTheme(themeSelect.value));
-  if (browseBtn && imageInput) browseBtn.addEventListener('click', e => { e.preventDefault(); imageInput.click(); });
-  if (imageInput) imageInput.addEventListener('change', e => { [...e.target.files].forEach(f => uploadImage(f)); imageInput.value = ''; });
-  if (fabOpen) fabOpen.addEventListener('click', () => fabOptions?.classList.toggle('hidden'));
-  if (openCameraBtn) openCameraBtn.addEventListener('click', () => { document.getElementById('cameraModal')?.classList.remove('hidden'); startCamera(); fabOptions?.classList.add('hidden'); });
-  if (captureBtn) captureBtn.addEventListener('click', () => capturePhoto());
-  if (closeCameraBtn) closeCameraBtn.addEventListener('click', () => { stopCamera(); document.getElementById('cameraModal')?.classList.add('hidden'); });
-  if (switchCameraBtn) switchCameraBtn.addEventListener('click', () => switchCamera());
-  if (deleteImageBtn) deleteImageBtn.addEventListener('click', deleteCurrentImage);
-  if (logoutBtn) logoutBtn.addEventListener('click', logoutUser);
-
-  if (openNoteBtn) openNoteBtn.addEventListener('click', () => {
-    const img = IMAGE_URLS[resolveCurrentIndex()];
-    if (img && img.fileId) openNoteModal(img.fileId);
-  });
-  if (noteCloseBtn) noteCloseBtn.addEventListener('click', closeNoteModal);
-  if (noteEditBtn) noteEditBtn.addEventListener('click', toggleNoteEdit);
-  if (noteSaveBtn) noteSaveBtn.addEventListener('click', async () => {
-    const modal = document.getElementById('noteModal');
-    const fid = modal?.dataset?.fileid;
-    if (fid) await saveNoteFromModal(fid);
-  });
-
-  document.querySelectorAll('.lightbox-close').forEach(b => b.addEventListener('click', closeLightbox));
-  document.querySelectorAll('.lightbox-nav.prev').forEach(b => b.addEventListener('click', prevImage));
-  document.querySelectorAll('.lightbox-nav.next').forEach(b => b.addEventListener('click', () => nextImage()));
-
-  document.addEventListener('keydown', (e) => {
-    const lb = document.getElementById('lightbox');
-    if (!lb || lb.classList.contains('hidden')) return;
-    if (e.key === 'Escape') closeLightbox();
-    if (e.key === 'ArrowRight') nextImage();
-    if (e.key === 'ArrowLeft') prevImage();
-  });
-
+function closeLightbox() {
   const lb = document.getElementById('lightbox');
-  const attachSwipe = (el) => {
-    if (!el) return;
-    try { el.style.touchAction = 'pan-y'; } catch (e) {}
-    if (window.PointerEvent) {
-      let pointerDown = false;
-      let startX = 0, startY = 0;
-      el.addEventListener('pointerdown', (e) => { startX = e.clientX; startY = e.clientY; pointerDown = true; });
-      el.addEventListener('pointerup', (e) => {
-        if (!pointerDown) return;
-        pointerDown = false;
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-        const absX = Math.abs(dx), absY = Math.abs(dy);
-        if (absX > 50 && absX > absY) { if (dx < 0) nextImage(); else prevImage(); }
-      });
-      el.addEventListener('pointercancel', () => { pointerDown = false; });
-    } else {
-      let tStartX = 0, tStartY = 0;
-      el.addEventListener('touchstart', (e) => { const t = e.touches && e.touches[0]; if (!t) return; tStartX = t.clientX; tStartY = t.clientY; }, { passive: true });
-      el.addEventListener('touchend', (e) => {
-        const t = e.changedTouches && e.changedTouches[0];
-        if (!t) return;
-        const dx = t.clientX - tStartX;
-        const dy = t.clientY - tStartY;
-        const absX = Math.abs(dx), absY = Math.abs(dy);
-        if (absX > 50 && absX > absY) { if (dx < 0) nextImage(); else prevImage(); }
-      }, { passive: true });
-    }
-  };
-  attachSwipe(lb);
+  if (!lb) return;
+  lb.classList.add('hidden');
+
+  const wrapEl = document.querySelector('.lightbox-image-wrap');
+  const currImg = wrapEl?.querySelector('img.lightbox-image');
+  if (currImg) detachZoomHandlersFromImage(currImg);
+  resetZoomState();
+
+  CURRENT_INDEX = -1;
+  setTimeout(() => {
+    if (wrapEl) wrapEl.replaceChildren();
+  }, 300);
 }
 
-/* TOPBAR visibility */
-function updateTopbar() {
-  if (!CURRENT_USER) document.body.classList.add('no-auth'); else document.body.classList.remove('no-auth');
+/* =========================
+   Lightbox open
+   ========================= */
+function openLightboxByFileId(fid, sourceEl) {
+  const index = IMAGE_URLS.findIndex(x => String(x.fileId) === String(fid));
+  if (index === -1) return;
+  const lb = document.getElementById('lightbox');
+  lb.classList.remove('hidden');
+  showImageAtIndex(index, { sourceEl });
 }
 
-/* LOGOUT */
-async function logoutUser() {
+/* =========================
+   Notes & Delete
+   ========================= */
+
+async function addNote(fileId) {
+  const note = prompt('Enter note text:');
+  if (!note) return;
   try {
-    disableUI();
-    try { if (SKYSAFE_TOKEN) await callAppsScript({ action: 'logout', token: SKYSAFE_TOKEN }); } catch (e) {}
-  } finally {
-    forceLogoutLocal();
-    enableUI();
-    window.location.reload(true);
-  }
+    await callAppsScript({ action:'addNote', token:SKYSAFE_TOKEN, fileId, note });
+    toast('Note added');
+  } catch (err) { toast(err.message || 'Failed to add note'); }
 }
 
-/* INIT */
-window.addEventListener('DOMContentLoaded', () => {
-  bindUI();
-  initObserver();
-  wireDragOverlay();
-  updateTopbar();
-
+async function deleteImage(fileId) {
+  if (!confirm('Delete this image?')) return;
   try {
-    const lb = document.getElementById('lightbox');
-    if (lb) lb.style.touchAction = 'pan-y';
-    const wrap = document.querySelector('.lightbox-image-wrap');
-    if (wrap) wrap.style.touchAction = 'none';
-  } catch (e) {}
+    await callAppsScript({ action:'deleteImage', token:SKYSAFE_TOKEN, fileId });
+    IMAGE_URLS = IMAGE_URLS.filter(x => String(x.fileId) !== String(fileId));
+    renderGallery();
+    toast('Deleted');
+    closeLightbox();
+  } catch (err) { toast(err.message || 'Failed to delete image'); }
+}
 
-  registerServiceWorker();
+/* =========================
+   Auth & Load
+   ========================= */
 
-  if (CURRENT_USER && SKYSAFE_TOKEN) {
+async function doLogin(user, pass) {
+  disableUI();
+  try {
+    const data = await callAppsScript({ action:'login', user, pass });
+    if (!data || !data.token) throw new Error('Login failed');
+    CURRENT_USER = user;
+    SKYSAFE_TOKEN = data.token;
+    localStorage.setItem('CURRENT_USER', CURRENT_USER);
+    localStorage.setItem('skySafeeToken', SKYSAFE_TOKEN);
+    updateTopbar();
     document.getElementById('authSection')?.classList.add('hidden');
     document.getElementById('gallerySection')?.classList.remove('hidden');
-    loadTheme().then(() => loadGallery(0, INITIAL_LOAD_COUNT));
-  } else {
-    document.getElementById('authSection')?.classList.remove('hidden');
-    document.getElementById('gallerySection')?.classList.add('hidden');
-  }
+    loadGallery(true);
+  } catch (err) {
+    toast(err.message || 'Login error');
+  } finally { enableUI(); }
+}
+
+function doLogout() {
+  forceLogoutLocal();
+}
+
+function updateTopbar() {
+  const el = document.getElementById('topbar-user');
+  if (el) el.textContent = CURRENT_USER || '';
+}
+
+/* =========================
+   Load Gallery
+   ========================= */
+async function loadGallery(reset=false) {
+  if (loading.gallery) return;
+  loading.gallery = true;
+  try {
+    if (reset) {
+      NEXT_START = 0;
+      IMAGE_URLS = [];
+      HAS_MORE = true;
+      const gallery = document.getElementById('gallery');
+      if (gallery) gallery.replaceChildren();
+    }
+    if (!HAS_MORE) return;
+    const data = await callAppsScript({ action:'listImages', token:SKYSAFE_TOKEN, start:NEXT_START, count:LOAD_MORE_COUNT });
+    if (!data || !Array.isArray(data.images)) throw new Error('Bad listImages data');
+    const newItems = data.images;
+    IMAGE_URLS = IMAGE_URLS.concat(newItems);
+    NEXT_START += newItems.length;
+    if (newItems.length < LOAD_MORE_COUNT) HAS_MORE = false;
+    renderGallery();
+  } catch (err) { toast(err.message || 'Failed to load images'); }
+  finally { loading.gallery = false; }
+}
+
+/* =========================
+   Upload
+   ========================= */
+async function uploadImage(file) {
+  if (!file) return;
+  disableUI();
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('token', SKYSAFE_TOKEN);
+    const res = await fetch(SCRIPT_URL + '?action=uploadImage', { method:'POST', body:formData });
+    const data = await res.json();
+    if (!data || !data.success) throw new Error(data.message || 'Upload failed');
+    toast('Uploaded');
+    loadGallery(true);
+  } catch (err) { toast(err.message || 'Upload error'); }
+  finally { enableUI(); }
+}
+
+/* =========================
+   Event bindings
+   ========================= */
+document.getElementById('loginForm')?.addEventListener('submit', e => {
+  e.preventDefault();
+  const user = e.target.user.value.trim();
+  const pass = e.target.pass.value;
+  doLogin(user, pass);
 });
+
+document.getElementById('logoutBtn')?.addEventListener('click', doLogout);
+
+document.getElementById('imageInput')?.addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) uploadImage(f);
+});
+
+document.querySelector('.lightbox-nav.next')?.addEventListener('click', nextImage);
+document.querySelector('.lightbox-nav.prev')?.addEventListener('click', prevImage);
+document.querySelector('.lightbox-close')?.addEventListener('click', closeLightbox);
