@@ -391,27 +391,26 @@ function enableZoomOnCurrentImage(centerX = null, centerY = null, initialZoom = 
   const img = wrap?.querySelector('.lightbox-image');
   if (!wrap || !img) return;
 
-  // compute frame
   const dims = computeFrameSizeFor(img);
   const { frameW, frameH, naturalW, naturalH } = dims;
 
-  // ensure we disable any existing zoom state
+  // cleanup any existing zoom state first
   disableZoom();
 
-  // create frame element
+  // create frame element (this will receive pointer events)
   const frame = document.createElement('div');
   frame.className = 'zoom-frame';
   frame.style.width = frameW + 'px';
   frame.style.height = frameH + 'px';
 
-  // clone image and size it to fitFrame * initialZoom (we will compute display scale)
+  // clone image only for visual/panning; keep original hidden
   const clone = img.cloneNode(true);
   clone.removeAttribute('id');
   clone.className = 'zoom-image-clone';
   clone.draggable = false;
   clone.style.position = 'absolute';
   clone.style.userSelect = 'none';
-  clone.style.pointerEvents = 'auto';
+  clone.style.pointerEvents = 'none'; // clone should not be the pointer target
 
   const fitScale = Math.min(frameW / naturalW, frameH / naturalH);
   const zoom = clamp(initialZoom || 2, ZOOM.min, ZOOM.max);
@@ -422,13 +421,22 @@ function enableZoomOnCurrentImage(centerX = null, centerY = null, initialZoom = 
   clone.style.width = imageW + 'px';
   clone.style.height = imageH + 'px';
 
-  // initial centered left/top (so image is centered in frame)
+  // initial centered position
   const initialLeft = Math.round((frameW - imageW) / 2);
   const initialTop = Math.round((frameH - imageH) / 2);
   clone.style.left = initialLeft + 'px';
   clone.style.top = initialTop + 'px';
 
-  // set up ZOOM state
+  // assemble DOM
+  frame.appendChild(clone);
+  const container = document.createElement('div');
+  container.className = 'zoom-frame-container';
+  container.style.pointerEvents = 'none'; // outer container should not swallow pointer events
+  container.appendChild(frame);
+  img.style.visibility = 'hidden';
+  wrap.appendChild(container);
+
+  // record zoom state
   ZOOM.frameEl = frame;
   ZOOM.imgClone = clone;
   ZOOM.frameW = frameW;
@@ -438,40 +446,18 @@ function enableZoomOnCurrentImage(centerX = null, centerY = null, initialZoom = 
   ZOOM.zoom = zoom;
   ZOOM.min = 1;
   ZOOM.max = 4;
-
-  // insert frame into DOM centered within .lightbox-image-wrap
-  // we'll create a container that centers it
-  const container = document.createElement('div');
-  container.className = 'zoom-frame-container';
-  container.style.width = '100%';
-  container.style.height = '100%';
-  container.style.display = 'flex';
-  container.style.alignItems = 'center';
-  container.style.justifyContent = 'center';
-  container.style.pointerEvents = 'none'; // container itself shouldn't steal events; frame will be pointer-enabled
-
-  // place frame inside container and container into wrap
-  frame.appendChild(clone);
-  frame.style.pointerEvents = 'auto';
-  container.appendChild(frame);
-  // hide original image so we don't see duplicate visuals (but keep it for future)
-  img.style.visibility = 'hidden';
-  wrap.appendChild(container);
-
-  // store some properties for pan calculations
   ZOOM.active = true;
   IS_ZOOMED = true;
+  const lb = document.getElementById('lightbox'); if (lb) lb.classList.add('zoom-active');
 
-  // set extra class on lightbox for styling (optional)
-  const lb = document.getElementById('lightbox');
-  if (lb) lb.classList.add('zoom-active');
-
-  // Pointer pan handlers (using pointer events)
+  /* ---------- POINTER & WHEEL HANDLERS ---------- */
+  // pointerdown attached to FRAME so pointer capture + release work reliably
   const onPointerDown = (e) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return; // only left button for mouse
+    // only left-button for mouse
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
     ZOOM.pointerId = e.pointerId;
-    frame.setPointerCapture(ZOOM.pointerId);
+    try { frame.setPointerCapture(ZOOM.pointerId); } catch (err) { /* ignore */ }
     ZOOM.startX = e.clientX;
     ZOOM.startY = e.clientY;
     ZOOM.startLeft = parseFloat(clone.style.left) || 0;
@@ -486,7 +472,6 @@ function enableZoomOnCurrentImage(centerX = null, centerY = null, initialZoom = 
     let newLeft = ZOOM.startLeft + dx;
     let newTop = ZOOM.startTop + dy;
 
-    // compute bounds: allowed left between (frameW - imageW) and 0
     const minLeft = Math.min(ZOOM.frameW - ZOOM.imageW, 0);
     const maxLeft = 0;
     const minTop = Math.min(ZOOM.frameH - ZOOM.imageH, 0);
@@ -505,9 +490,8 @@ function enableZoomOnCurrentImage(centerX = null, centerY = null, initialZoom = 
     }
   };
 
-  // wheel zoom handler (desktop). Zoom centers on pointer position.
+  // wheel (pointer-centered zoom) on FRAME
   const onWheel = (e) => {
-    // If ctrl key is used for browser zoom we still honor wheel-based zoom here.
     if (!ZOOM.active) return;
     e.preventDefault();
 
@@ -516,43 +500,34 @@ function enableZoomOnCurrentImage(centerX = null, centerY = null, initialZoom = 
     const py = clamp(e.clientY - rect.top, 0, rect.height);
 
     const oldZoom = ZOOM.zoom;
-    // sensitivity tuned for reasonable zoom steps
     const factor = Math.exp(-e.deltaY * 0.0012);
     let newZoom = clamp(oldZoom * factor, ZOOM.min, ZOOM.max);
 
-    // if zoom rounded becomes ~1 (or less) -> unzoom and cleanup
     if (newZoom <= 1.001) {
       disableZoom();
       return;
     }
 
-    // compute ratio and new image sizes
     const ratio = newZoom / oldZoom;
     const newImageW = Math.round(ZOOM.imageW * ratio);
     const newImageH = Math.round(ZOOM.imageH * ratio);
 
-    // current position of image relative to frame
     const curLeft = parseFloat(clone.style.left) || 0;
     const curTop = parseFloat(clone.style.top) || 0;
 
-    // image point under cursor before zoom
     const imagePointX = px - curLeft;
     const imagePointY = py - curTop;
 
-    // after zoom, imagePointX' = imagePointX * ratio
     const newLeft = px - (imagePointX * ratio);
     const newTop = py - (imagePointY * ratio);
 
-    // update state
     ZOOM.zoom = newZoom;
     ZOOM.imageW = newImageW;
     ZOOM.imageH = newImageH;
 
-    // resize image element
     clone.style.width = newImageW + 'px';
     clone.style.height = newImageH + 'px';
 
-    // clamp newLeft/newTop
     const minLeft = Math.min(ZOOM.frameW - ZOOM.imageW, 0);
     const maxLeft = 0;
     const minTop = Math.min(ZOOM.frameH - ZOOM.imageH, 0);
@@ -561,8 +536,8 @@ function enableZoomOnCurrentImage(centerX = null, centerY = null, initialZoom = 
     clone.style.top = clamp(newTop, minTop, maxTop) + 'px';
   };
 
-  // double-tap detection (on frame)
-  let pointerDownTime = 0;
+  // double-tap on FRAME to toggle zoom-out (touch)
+  let lastTapLocal = 0;
   const onFramePointerDownForDoubleTap = (ev) => {
     if (ev.pointerType !== 'touch') return;
     const now = Date.now();
@@ -570,7 +545,6 @@ function enableZoomOnCurrentImage(centerX = null, centerY = null, initialZoom = 
     const dy = Math.abs(ev.clientY - ZOOM.lastTapY);
     const dist = Math.sqrt((dx*dx)+(dy*dy));
     if (now - ZOOM.lastTap < 350 && dist < 30) {
-      // double-tap detected -> toggle zoom out
       disableZoom();
       ZOOM.lastTap = 0;
       ZOOM.lastTapX = 0;
@@ -582,50 +556,47 @@ function enableZoomOnCurrentImage(centerX = null, centerY = null, initialZoom = 
     ZOOM.lastTapY = ev.clientY;
   };
 
-  // attach listeners
-  clone.addEventListener('pointerdown', onPointerDown);
+  // attach handlers to FRAME (consistent add & remove)
+  frame.addEventListener('pointerdown', onPointerDown);
   frame.addEventListener('pointermove', onPointerMove);
   frame.addEventListener('pointerup', onPointerUp);
   frame.addEventListener('pointercancel', onPointerUp);
   frame.addEventListener('wheel', onWheel, { passive: false });
   frame.addEventListener('pointerdown', onFramePointerDownForDoubleTap);
 
-  // store cleanup handlers on frame for later removal
+  // save handlers for cleanup (on the frame element)
   frame._zoomHandlers = { onPointerDown, onPointerMove, onPointerUp, onWheel, onFramePointerDownForDoubleTap };
 
-  // Save elements in ZOOM state so we can remove later
-  // Note: the container is appended at end of wrap; saving frame is sufficient for cleanup.
-  // Focus to ensure keyboard arrow events suppressed by nextImage/prevImage guards
-  setTimeout(() => {
-    try { (frame.querySelector('img') || frame).focus(); } catch (e) {}
-  }, 30);
+  // focus for some keyboard/a11y niceness
+  setTimeout(() => { try { (frame.querySelector('img') || frame).focus(); } catch (e) {} }, 30);
 }
-
 function disableZoom() {
   if (!IS_ZOOMED && !ZOOM.active) return;
   try {
     const wrap = document.querySelector('.lightbox-image-wrap');
     const img = wrap?.querySelector('.lightbox-image');
     if (img) img.style.visibility = ''; // restore original image
-    // remove frame container if present
+
     if (ZOOM.frameEl) {
       const frame = ZOOM.frameEl;
-      // remove listeners if present
+      // remove listeners if present (they were all attached to frame in the fix)
       if (frame._zoomHandlers) {
-        frame.removeEventListener('pointerdown', frame._zoomHandlers.onPointerDown);
-        frame.removeEventListener('pointermove', frame._zoomHandlers.onPointerMove);
-        frame.removeEventListener('pointerup', frame._zoomHandlers.onPointerUp);
-        frame.removeEventListener('pointercancel', frame._zoomHandlers.onPointerUp);
-        frame.removeEventListener('wheel', frame._zoomHandlers.onWheel);
-        frame.removeEventListener('pointerdown', frame._zoomHandlers.onFramePointerDownForDoubleTap);
+        try { frame.removeEventListener('pointerdown', frame._zoomHandlers.onPointerDown); } catch(e){}
+        try { frame.removeEventListener('pointermove', frame._zoomHandlers.onPointerMove); } catch(e){}
+        try { frame.removeEventListener('pointerup', frame._zoomHandlers.onPointerUp); } catch(e){}
+        try { frame.removeEventListener('pointercancel', frame._zoomHandlers.onPointerUp); } catch(e){}
+        try { frame.removeEventListener('wheel', frame._zoomHandlers.onWheel); } catch(e){}
+        try { frame.removeEventListener('pointerdown', frame._zoomHandlers.onFramePointerDownForDoubleTap); } catch(e){}
+        frame._zoomHandlers = null;
       }
-      // frame's parent is container; remove the container
+      // remove the entire container (parent of frame)
       const container = frame.parentNode;
       if (container && container.parentNode) container.parentNode.removeChild(container);
     }
   } catch (e) {
     console.warn('disableZoom cleanup error', e);
   } finally {
+    // reset ZOOM state fully
     ZOOM.frameEl = null;
     ZOOM.imgClone = null;
     ZOOM.frameW = 0;
@@ -639,6 +610,7 @@ function disableZoom() {
     if (lb) lb.classList.remove('zoom-active');
   }
 }
+
 
 /* ---------- LIGHTBOX: open/close (modified to integrate zoom) ---------- */
 
@@ -1462,3 +1434,4 @@ window.addEventListener('resize', () => {
     disableZoom();
   }
 });
+
