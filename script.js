@@ -1243,15 +1243,18 @@ function attachLightboxZoomHandlers() {
     }
   });
 
-  // Wheel on lightbox-wrap: for desktop quick zoom-in/out
-  wrap.addEventListener('wheel', (e) => {
-    // if zoom active, the frame already handles wheel. If not, interpret wheel as zoom trigger
-    if (IS_ZOOMED) return; // frame handles it
-    // only handle when pointer is over the image area
-    e.preventDefault();
-    // on wheel start, enable zoom centered at cursor and let frame handle further wheel events
-    enableZoomOnCurrentImage(e.clientX, e.clientY, 1.2);
-  }, { passive: false });
+// Wheel on lightbox-wrap: for desktop quick zoom-in/out
+wrap.addEventListener('wheel', (e) => {
+  // If an inner handler already consumed this event (e.g. the zoom frame), do nothing.
+  if (e.defaultPrevented) return;
+  // if zoom active, the frame already handles wheel. If not, interpret wheel as zoom trigger
+  if (IS_ZOOMED) return;
+  // only handle when pointer is over the image area
+  e.preventDefault();
+  // on wheel start, enable zoom centered at cursor and let frame handle further wheel events
+  enableZoomOnCurrentImage(e.clientX, e.clientY, 1.2);
+}, { passive: false });
+
 }
 
 /* Bind UI */
@@ -1407,5 +1410,6 @@ window.addEventListener('resize', () => {
     disableZoom();
   }
 });
+
 
 
