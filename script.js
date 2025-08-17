@@ -601,8 +601,9 @@ function openLightbox(index, sourceEl) {
     actions.style.zIndex = '1360';
     actions.style.pointerEvents = 'auto';
   }
-  requestAnimationFrame(() => lb.classList.add('visible'));
+  requestAnimationFrame(() =>{ lb.classList.add('visible');
   showImageAtIndex(index, { sourceEl, openZoom: !!sourceEl });
+                             });
 }
 
 function openLightboxByFileId(fileId, sourceEl) {
@@ -704,7 +705,7 @@ function showImageAtIndex(index, options = {}) {
   newImg.alt = item.alt || 'Lightbox image';
   newImg.draggable = false;
   newImg.dataset.fileid = item.fileId ? String(item.fileId) : '';
-  newImg.style.transition = 'transform .42s cubic-bezier(.2,.9,.25,1), opacity .32s ease';
+  //newImg.style.transition = 'transform .42s cubic-bezier(.2,.9,.25,1), opacity .32s ease';
   newImg.style.opacity = '0';
   newImg.style.willChange = 'transform, opacity';
   // ensure it's above existing image
@@ -1410,6 +1411,7 @@ window.addEventListener('resize', () => {
     disableZoom();
   }
 });
+
 
 
 
