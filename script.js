@@ -868,6 +868,7 @@ function showImageAtIndex(index, options = {}) {
     else if (newImg.decode) newImg.decode().then(startPlainEnter).catch(() => newImg.addEventListener('load', startPlainEnter, { once: true }));
     else newImg.addEventListener('load', startPlainEnter, { once: true });
   }
+}
 
 /* Navigation */
 async function nextImage() {
