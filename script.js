@@ -765,109 +765,77 @@ function showImageAtIndex(index, options = {}) {
     wrapExisting.style.zIndex = '1320';
   }
 
-  // Zoom-from-thumb (pixel-based) — wait for decode so we don't animate before the image has a size
+  // Zoom-from-thumb (pixel-based)
   if (openZoom && sourceEl) {
     try {
-      const startZoomAnim = () => {
-        const thumbRect = sourceEl.getBoundingClientRect();
-        const wrapRect = wrap.getBoundingClientRect();
+      const thumbRect = sourceEl.getBoundingClientRect();
+      const wrapRect = wrap.getBoundingClientRect();
 
-        const thumbCenterX = thumbRect.left + thumbRect.width / 2;
-        const thumbCenterY = thumbRect.top + thumbRect.height / 2;
-        const wrapCenterX = wrapRect.left + wrapRect.width / 2;
-        const wrapCenterY = wrapRect.top + wrapRect.height / 2;
-        const deltaX = thumbCenterX - wrapCenterX;
-        const deltaY = thumbCenterY - wrapCenterY;
+      const thumbCenterX = thumbRect.left + thumbRect.width / 2;
+      const thumbCenterY = thumbRect.top + thumbRect.height / 2;
+      const wrapCenterX = wrapRect.left + wrapRect.width / 2;
+      const wrapCenterY = wrapRect.top + wrapRect.height / 2;
+      const deltaX = thumbCenterX - wrapCenterX;
+      const deltaY = thumbCenterY - wrapCenterY;
 
-        const finalMaxWidth = Math.min(window.innerWidth - 48, wrapRect.width || (window.innerWidth - 48));
-        const scale = Math.max(0.06, (thumbRect.width / Math.max(1, finalMaxWidth)));
+      const finalMaxWidth = Math.min(window.innerWidth - 48, wrapRect.width || (window.innerWidth - 48));
+      const scale = Math.max(0.06, (thumbRect.width / Math.max(1, finalMaxWidth)));
 
-        // lock visual layout to the final max width to avoid reflow-jumps during animation
-        newImg.style.maxWidth = finalMaxWidth + 'px';
-        newImg.style.transformOrigin = 'center center';
-        newImg.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(${scale})`;
-        newImg.style.opacity = '0';
-        if (!newImg.parentNode) wrap.appendChild(newImg);
-        // ensure start state applied
-        void newImg.offsetWidth;
-        requestAnimationFrame(() => {
-          newImg.style.transform = 'translate(0px, 0px) scale(1)';
-          newImg.style.opacity = '1';
-          setTimeout(() => newImg.classList.add('visible'), 50);
-        });
-      };
-
-      // If already loaded/decoded, run immediately; otherwise wait for load/decode
-      if (newImg.complete && newImg.naturalWidth) {
-        startZoomAnim();
-      } else if (newImg.decode) {
-        // modern browsers: decode returns a promise
-        newImg.decode().then(startZoomAnim).catch(() => {
-          // fallback to load event if decode fails
-          newImg.addEventListener('load', startZoomAnim, { once: true });
-          if (!newImg.parentNode) wrap.appendChild(newImg);
-        });
-      } else {
-        newImg.addEventListener('load', startZoomAnim, { once: true });
-        if (!newImg.parentNode) wrap.appendChild(newImg);
-      }
-      // ensure zoom is disabled (same behavior you had)
+      newImg.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(${scale})`;
+      newImg.style.opacity = '0';
+      if (!newImg.parentNode) wrap.appendChild(newImg);
+      void newImg.offsetWidth;
+      requestAnimationFrame(() => {
+        newImg.style.transform = 'translate(0px, 0px) scale(1)';
+        newImg.style.opacity = '1';
+        // ensure visible class is present after a tick
+        setTimeout(() => newImg.classList.add('visible'), 50);
+      });
+      // make sure zoom is disabled after a successful open-by-thumb; user can double-tap or wheel to zoom
       return;
     } catch (errZoom) {
       console.warn('zoom-from-thumb fallback', errZoom);
     }
   }
 
-  // Slide transition when existing image present (safe: wait for load before kicking the CSS transition)
+  // Slide transition when existing image present
   if (wrapExisting && direction) {
-    // append early so load starts and spinner shows
     if (!newImg.parentNode) wrap.appendChild(newImg);
+    if (direction === 'left') newImg.classList.add('enter-from-right');
+    else newImg.classList.add('enter-from-left');
 
-    const startSlide = () => {
-      if (direction === 'left') newImg.classList.add('enter-from-right');
-      else newImg.classList.add('enter-from-left');
+    // ensure start state registered
+    void newImg.offsetWidth;
 
-      // ensure start state registered
-      void newImg.offsetWidth;
+    requestAnimationFrame(() => {
+      if (direction === 'left') {
+        wrapExisting.classList.add('exit-to-left');
+      } else {
+        wrapExisting.classList.add('exit-to-right');
+      }
+      // bring new in
+      newImg.classList.remove('enter-from-right', 'enter-from-left');
+      newImg.classList.add('visible');
+      newImg.style.opacity = '1';
+      // safety: if transitionend doesn't fire, finalize will be invoked by localTimer
+    });
 
-      requestAnimationFrame(() => {
-        if (direction === 'left') {
-          wrapExisting.classList.add('exit-to-left');
-        } else {
-          wrapExisting.classList.add('exit-to-right');
-        }
-        // bring new in
-        newImg.classList.remove('enter-from-right', 'enter-from-left');
-        // make sure visible class gets added so opacity/transform go to final state
-        newImg.classList.add('visible');
-        attachLightboxZoomHandlers();
-      });
-    };
-
-    if (newImg.complete && newImg.naturalWidth) {
-      startSlide();
-    } else if (newImg.decode) {
-      newImg.decode().then(startSlide).catch(() => newImg.addEventListener('load', startSlide, { once: true }));
-    } else {
-      newImg.addEventListener('load', startSlide, { once: true });
-    }
-  } else {
-    // fallback non-slide entrance (single image) — keep existing behavior but ensure image has decoded
-    newImg.style.opacity = '0';
-    if (!newImg.parentNode) wrap.appendChild(newImg);
-    const startPlainEnter = () => {
-      void newImg.offsetWidth;
-      requestAnimationFrame(() => {
-        newImg.style.transform = 'translate(0px, 0px) scale(1)';
-        newImg.style.opacity = '1';
-        newImg.classList.add('visible');
-        attachLightboxZoomHandlers();
-      });
-    };
-    if (newImg.complete && newImg.naturalWidth) startPlainEnter();
-    else if (newImg.decode) newImg.decode().then(startPlainEnter).catch(() => newImg.addEventListener('load', startPlainEnter, { once: true }));
-    else newImg.addEventListener('load', startPlainEnter, { once: true });
+    return;
   }
+
+  // Default fade/pop-in (no existing image)
+  if (!newImg.parentNode) wrap.appendChild(newImg);
+  newImg.style.transform = 'translate(0px, 0px) scale(0.98)';
+  newImg.style.opacity = '0';
+  void newImg.offsetWidth;
+  requestAnimationFrame(() => {
+    newImg.style.transform = 'translate(0px, 0px) scale(1)';
+    newImg.style.opacity = '1';
+    newImg.classList.add('visible');
+    // ensure there's always a quick handler to bind zoom-related interactions:
+    // Add double-tap and wheel listeners on the wrap for toggling zoom and desktop wheel zoom
+    attachLightboxZoomHandlers();
+  });
 }
 
 /* Navigation */
