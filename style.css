@@ -292,7 +292,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
   background: rgba(0,0,0,0.6); padding:20px;
 }
 #noteModal .modal-card {
-  width:100%; max-width:560px; border-radius:12px; padding:16px; background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border:1px solid rgba(255,255,255,0.03);
+  width:100%; max-width:560px; border-radius:12px; padding:16px; background: linear-gradient(180deg, rgb(18 3 3), rgb(255 255 255 / 0%));
 }
 #noteModal #noteView { color:var(--muted); min-height:64px; white-space:pre-wrap; }
 #noteModal textarea { width:100%; min-height:120px; padding:10px; border-radius:8px; background:var(--surface); border:1px solid rgba(255,255,255,0.03); color:var(--text); }
@@ -347,3 +347,4 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .small-spinner { width:18px; height:18px; border-radius:50%; border:2px solid rgba(255,255,255,0.08); border-top-color:var(--accent); animation: spin 0.9s linear infinite; display:inline-block; vertical-align:middle; }
 
 /* --------- End --------- */
+
