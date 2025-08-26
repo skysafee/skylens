@@ -1415,3 +1415,95 @@ window.addEventListener('resize', () => {
 
 
 
+
+
+
+/* ---- Web Share Target integration ----
+   - Handles PWA launch via Web Share Target (launchQueue).
+   - Exposes window.receiveSharedFiles(files) to accept File/FileSystemFileHandle arrays.
+   - If user not signed in, stores files temporarily in window._pendingSharedFiles and prompts login.
+   - After login, pending files are uploaded automatically.
+*/
+window.receiveSharedFiles = async function(files) {
+  try {
+    if (!files || !files.length) return;
+    // Normalize FileSystemFileHandle entries (Chrome) to File objects
+    const norm = [];
+    for (const f of files) {
+      try {
+        if (f && typeof f.getFile === 'function') {
+          const file = await f.getFile();
+          norm.push(file);
+        } else if (f instanceof File) {
+          norm.push(f);
+        } else {
+          // skip unknown entry
+        }
+      } catch (e) {
+        console.warn('receiveSharedFiles: could not read file handle', e);
+      }
+    }
+
+    if (!norm.length) return;
+
+    if (!CURRENT_USER || !SKYSAFE_TOKEN) {
+      // store pending files in a temporary global; cannot persist File objects across restarts reliably
+      window._pendingSharedFiles = norm;
+      sessionStorage._pendingShared = '1';
+      toast('Please sign in to complete the share — we saved the files temporarily.');
+      // show auth UI
+      document.getElementById('authSection')?.classList.remove('hidden');
+      document.getElementById('gallerySection')?.classList.add('hidden');
+      return;
+    }
+
+    // upload sequentially to avoid overwhelming the UI/server
+    for (const file of norm) {
+      try { await uploadImage(file); } catch (e) { console.warn('uploadImage failed for shared file', e); }
+    }
+    toast('Shared files uploaded');
+  } catch (e) {
+    console.error('receiveSharedFiles', e);
+    toast('Failed to handle shared files');
+  }
+};
+
+// launchQueue consumer for receiving files when the PWA is launched via share_target
+if ('launchQueue' in window && typeof window.launchQueue.setConsumer === 'function') {
+  window.launchQueue.setConsumer(async launchParams => {
+    if (!launchParams) return;
+    // Files are available via launchParams.files (FileSystemFileHandle[])
+    if (launchParams.files && launchParams.files.length) {
+      await window.receiveSharedFiles(launchParams.files);
+      // If app is in a handler page, you may want to navigate back to gallery
+      try { if (location.pathname.includes('/share-handler')) location.href = '/skylens/'; } catch(e){}
+      return;
+    }
+    // text/url share (optional)
+    const maybeText = launchParams.shareTarget && (launchParams.shareTarget.text || launchParams.shareTarget.url || launchParams.shareTarget.title);
+    if (maybeText) {
+      // Here you could create a new "note" or prefill an upload with the URL
+      console.debug('Shared text/url/title:', launchParams.shareTarget);
+      toast('Shared content received');
+    }
+  });
+}
+
+// On DOMContentLoaded, if user just logged in and there were pending files, upload them
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    if (CURRENT_USER && sessionStorage._pendingShared && window._pendingSharedFiles && window._pendingSharedFiles.length) {
+      const pending = window._pendingSharedFiles.slice();
+      window._pendingSharedFiles = null;
+      sessionStorage.removeItem('_pendingShared');
+      (async () => {
+        for (const f of pending) {
+          try {
+            const fileObj = (f && typeof f.getFile === 'function') ? await f.getFile() : f;
+            await uploadImage(fileObj);
+          } catch (e) { console.warn('Failed uploading pending shared file', e); }
+        }
+      })();
+    }
+  } catch (e) { console.warn('post-login pending share handler', e); }
+});

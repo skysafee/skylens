@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Share to SkyLens</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f1724" />
+  <style>body{font-family:Inter,system-ui,Arial;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0f1724;color:#fff}</style>
+</head>
+<body>
+  <div>
+    <h2>Receiving shared content…</h2>
+    <p id="status">Please wait — Skylens will open shortly.</p>
+  </div>
+  <script src="script.js" defer></script>
+  <script>
+    // If the app is installed and launched via share, the launchQueue consumer in the main script will handle files.
+    // As a fallback, we also listen here to launchQueue in case the app hasn't fully initialized yet.
+    if ('launchQueue' in window && typeof window.launchQueue.setConsumer === 'function') {
+      window.launchQueue.setConsumer(async lp => {
+        if (!lp) return;
+        if (lp.files && lp.files.length) {
+          // Attempt to hand off to global receiver
+          if (window.receiveSharedFiles) {
+            await window.receiveSharedFiles(lp.files);
+            document.getElementById('status').textContent = 'Files queued for upload — opening Skylens...';
+            setTimeout(() => { location.href = '/skylens/'; }, 900);
+          } else {
+            // store temporarily and redirect
+            window._pendingSharedFiles = lp.files;
+            sessionStorage._pendingShared = '1';
+            document.getElementById('status').textContent = 'Files saved temporarily — opening Skylens...';
+            setTimeout(() => { location.href = '/skylens/'; }, 900);
+          }
+        } else {
+          // No files: maybe text/url
+          const params = new URLSearchParams(location.search);
+          const txt = params.get('text') || params.get('url') || params.get('title');
+          if (txt) {
+            document.getElementById('status').textContent = 'Received shared text. Opening Skylens...';
+          }
+          setTimeout(() => { location.href = '/skylens/'; }, 900);
+        }
+      });
+    } else {
+      document.getElementById('status').textContent = 'Share not supported in this browser. Opening Skylens...';
+      setTimeout(() => { location.href = '/skylens/'; }, 900);
+    }
+  </script>
+</body>
+</html>
