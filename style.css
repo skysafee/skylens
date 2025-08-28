@@ -98,13 +98,6 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .dropzone .link { background:none; border:none; color:var(--accent); cursor:pointer; }
 
 /* --------- Gallery: responsive clean grid --------- */
-#gallery {
-  position: relative;     /* make children absolute relative to gallery */
-  min-height: 300px;      /* ensures space when empty */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 .gallery-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--thumb-min), 1fr));
@@ -354,5 +347,6 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .small-spinner { width:18px; height:18px; border-radius:50%; border:2px solid rgba(255,255,255,0.08); border-top-color:var(--accent); animation: spin 0.9s linear infinite; display:inline-block; vertical-align:middle; }
 
 /* --------- End --------- */
+
 
 
