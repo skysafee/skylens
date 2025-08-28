@@ -208,17 +208,6 @@ function renderGallery() {
   const container = document.getElementById('gallery');
   if (!container) return;
 
-  const emptyMessage = document.getElementById('emptyMessage');
-
-  if (IMAGE_URLS.length === 0) {
-    if (emptyMessage) emptyMessage.style.display = 'block';
-    // Clear gallery just in case old items remain
-    container.replaceChildren();
-    return;
-  } else {
-    if (emptyMessage) emptyMessage.style.display = 'none';
-  }
-
   const existingMap = new Map();
   container.querySelectorAll('.gallery-item').forEach(el => {
     const fid = el.dataset.fileid;
@@ -1420,6 +1409,7 @@ window.addEventListener('resize', () => {
     disableZoom();
   }
 });
+
 
 
 
