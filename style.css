@@ -255,7 +255,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .zoom-frame {
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.6);
-  overflow: hidden;
+  overflow: visible;
   background: rgba(0,0,0,0.92);
   pointer-events: auto;
   position: relative;
@@ -347,6 +347,7 @@ button.disabled, .icon-btn.disabled, .fab-option.disabled, .control.disabled { o
 .small-spinner { width:18px; height:18px; border-radius:50%; border:2px solid rgba(255,255,255,0.08); border-top-color:var(--accent); animation: spin 0.9s linear infinite; display:inline-block; vertical-align:middle; }
 
 /* --------- End --------- */
+
 
 
 
