@@ -4,7 +4,7 @@
 // - Immediate activation (skipWaiting + clients.claim)
 // - Sends a "SKY_UPDATE" postMessage when a new SW activates
 
-const SW_VERSION = 'skylens';
+const SW_VERSION = 'v0220250102';
 const CORE_ASSETS = [
   '/', // allows navigation fallback to be cached as index.html at install-time if fetched
   '/skylens/',               // start url (GitHub Pages)
