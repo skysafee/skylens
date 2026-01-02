@@ -4,9 +4,9 @@
 // =========================
 
 /* CONFIG */
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwsuhmmfT051Lb8AW2l_tPBBoizhuiLA4rjRbpzWalT7fjjw3DsKowKjcWffmYwrWaO/exec';
-const INITIAL_LOAD_COUNT = 8;
-const LOAD_MORE_COUNT = 16;
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbznG6sI-BnSY6ysmn840khs66cZIhx50F8S6Y907admIQL1sFCzlTdywf3BLWbARq6i/exec';
+const INITIAL_LOAD_COUNT = 4;
+const LOAD_MORE_COUNT = 20;
 const noteLoading = {};
 
 /* STATE */
@@ -1409,6 +1409,7 @@ window.addEventListener('resize', () => {
     disableZoom();
   }
 });
+
 
 
 
